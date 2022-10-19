@@ -1,0 +1,7 @@
+*.pdf
+*.m4v
+*.o
+*.idea
+*.temp
+
+cmake-build-debug
