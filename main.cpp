@@ -51,21 +51,26 @@ public:
     std::vector<double> alpha;
     std::vector<double> radii;
 
+    coordT *points;
+    coordT *normals;
+
     int nvertices{}, nvornoi{};
 
     MAT(){}
 
     coordT *getPoints(MyMesh &m, int dimension){
         int cnt=0;
-        coordT *points, *coords;
-        coords = points = (coordT*)malloc((m.VN())*(dimension)*sizeof(coordT));
+        coordT *coords;
+        coords = this->points = this->normals = (coordT*)malloc((m.VN())*(dimension)*sizeof(coordT));
 
         MyMesh::VertexIterator vi;
         for(vi = m.vert.begin(); vi != m.vert.end(); ++vi){
 //        cout <<"Point coords: ";
             for(int ii = 0;ii < dimension; ++ii){
                 *coords = (*vi).P()[ii];
+                *normals = (*vi).N()[ii];
                 coords++;
+                this->normals++;
             }
 //        cout <<endl;
             ++cnt;
@@ -80,12 +85,15 @@ public:
         std::vector< std::vector<int> > scorr(nvoronoi, std::vector<int>(4, 0));
         std::vector<int> counter(nvoronoi, 0);
 
+        MyVertex p;
         vertexT *vertex;
         int dim = 3;
         uint sidx = 0;
         FORALLvertices {
             double max_dist = 0;
             double max_dist_i = 0;
+
+//            vertex->;
 
             Point3f voro_vertex;
             for(int j = 0; j < (int)cells[sidx].size(); j++){
@@ -138,7 +146,7 @@ public:
             {
                 // Retrieve surface coordinate
                 int sidx = scorr[vidx][i_sidx];
-                surf_vertex = points[Vertex(sidx)];
+//                surf_vertex = points[Vertex(sidx)];
 
                 // Create spoke
                 s = surf_vertex.operator-(voro_vertex);
@@ -254,86 +262,86 @@ void searchFirstPole(qhT *qh, int dim, MyMesh &m, double threshold){
     }
 }
 
-int main( int argc, char **argv )
-{
-    if(argc<2)
-    {
-        printf("Usage trimesh_base <meshfilename.off>\n");
-        return -1;
-    }
-
-    MyMesh m;
-
-    MyMesh m2;
-    int loadmask = 0;
-//    tri::io::ImporterOBJ<MyMesh>::Open(m,argv[1], loadmask);
-    tri::io::ImporterOFF<MyMesh>::Open(m,argv[1]);
-    Point3f p;
-    printf("Input mesh '%s'  vn:%i fn:%i\n",argv[1],m.VN(),m.FN());
-
-    tri::Allocator<MyMesh>::CompactVertexVector(m);
-    tri::UpdateBounding<MyMesh>::Box(m);
-
-    char flags[]="v Qbb";
-    char comment[]="";
-    int dimension = 3;
-    MAT mat;
-    coordT *points = mat.getPoints(m, dimension);
-
-    Qhull myqhull(comment,dimension,m.VN(), points, flags);
-
-    std::vector< std::vector<uint>> cells;
-    std::vector<Point3f> loci;
-
-    int i = 0;
-    cout << "facetList size: "<<myqhull.facetList().size()<<endl;
-    for(QhullFacet f: myqhull.facetList())
-    {
-//        cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%"<<endl;
-        //SE E' DELAUNAY ALLORA E' UN VERTICE DEL VORONOI
-        if(f.isUpperDelaunay()) {
-//            cout <<"isDelaunay"<<endl;
-            continue;
-        }
-        QhullPoint voronoiPoints = f.voronoiVertex();
-//        cout << "VORONOI P "<<*voronoiPoints.coordinates()<<endl;
-//        cout<<"added point to new mesh"<<endl;
-        Point3f p(voronoiPoints[0],voronoiPoints[1],voronoiPoints[2]);
-        tri::Allocator<MyMesh>::AddVertex(m2, p, Color4b::Red);
-
-        if(!m.bbox.IsIn(p)) {
-//            PRINTP(p);
-//            cout<<"not in the bounding box"<<endl;
-            continue;
-        }
-//        cout <<"here"<<endl;
-        loci.emplace_back(p);
-
-        cells.resize(m.VN());
-        for(QhullVertex v: f.vertices())
-            cells[v.point().id()].push_back(i);
-        i++;
-    }
-
-    cout << "loci size: "<<loci.size()<<endl;
-//    for(Point3f temp: loci){
-//        PRINTP(temp);
+//int main( int argc, char **argv )
+//{
+//    if(argc<2)
+//    {
+//        printf("Usage trimesh_base <meshfilename.off>\n");
+//        return -1;
 //    }
-
-    int nvertices = m.VN();
-    int nvoronoi = loci.size();
-
-    auto angle = [](Point3f a, Point3f b)->double {
-        return acos(a.X()*b.X() + a.Y()*b.Y() + a.Z()*b.Z());
-    };
-
-    //TODO compute medial axis
-        //get medial angle and radii
-        //set surfaces to medial
-//    tri::io::ExporterOBJ<MyMesh>::Save(m,"cactusTest.obj",tri::io::Mask::IOM_FACECOLOR);
-    cout << "mesh2 vertices: "<< m2.VN()<<endl;
-    tri::io::ExporterOFF<MyMesh>::Save(m2,"torusTest.off",tri::io::Mask::IOM_FACECOLOR);
-
-    return 0;
-}
+//
+//    MyMesh m;
+//
+//    MyMesh m2;
+//    int loadmask = 0;
+////    tri::io::ImporterOBJ<MyMesh>::Open(m,argv[1], loadmask);
+//    tri::io::ImporterOFF<MyMesh>::Open(m,argv[1]);
+//    Point3f p;
+//    printf("Input mesh '%s'  vn:%i fn:%i\n",argv[1],m.VN(),m.FN());
+//
+//    tri::Allocator<MyMesh>::CompactVertexVector(m);
+//    tri::UpdateBounding<MyMesh>::Box(m);
+//
+//    char flags[]="v Qbb";
+//    char comment[]="";
+//    int dimension = 3;
+//    MAT mat;
+//    coordT *points = mat.getPoints(m, dimension);
+//
+//    Qhull myqhull(comment,dimension,m.VN(), points, flags);
+//
+//    std::vector< std::vector<uint>> cells;
+//    std::vector<Point3f> loci;
+//
+//    int i = 0;
+//    cout << "facetList size: "<<myqhull.facetList().size()<<endl;
+//    for(QhullFacet f: myqhull.facetList())
+//    {
+////        cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%"<<endl;
+//        //SE E' DELAUNAY ALLORA E' UN VERTICE DEL VORONOI
+//        if(f.isUpperDelaunay()) {
+////            cout <<"isDelaunay"<<endl;
+//            continue;
+//        }
+//        QhullPoint voronoiPoints = f.voronoiVertex();
+////        cout << "VORONOI P "<<*voronoiPoints.coordinates()<<endl;
+////        cout<<"added point to new mesh"<<endl;
+//        Point3f p(voronoiPoints[0],voronoiPoints[1],voronoiPoints[2]);
+//        tri::Allocator<MyMesh>::AddVertex(m2, p, Color4b::Red);
+//
+//        if(!m.bbox.IsIn(p)) {
+////            PRINTP(p);
+////            cout<<"not in the bounding box"<<endl;
+//            continue;
+//        }
+////        cout <<"here"<<endl;
+//        loci.emplace_back(p);
+//
+//        cells.resize(m.VN());
+//        for(QhullVertex v: f.vertices())
+//            cells[v.point().id()].push_back(i);
+//        i++;
+//    }
+//
+//    cout << "loci size: "<<loci.size()<<endl;
+////    for(Point3f temp: loci){
+////        PRINTP(temp);
+////    }
+//
+//    int nvertices = m.VN();
+//    int nvoronoi = loci.size();
+//
+//    auto angle = [](Point3f a, Point3f b)->double {
+//        return acos(a.X()*b.X() + a.Y()*b.Y() + a.Z()*b.Z());
+//    };
+//
+//    //TODO compute medial axis
+//        //get medial angle and radii
+//        //set surfaces to medial
+////    tri::io::ExporterOBJ<MyMesh>::Save(m,"cactusTest.obj",tri::io::Mask::IOM_FACECOLOR);
+//    cout << "mesh2 vertices: "<< m2.VN()<<endl;
+//    tri::io::ExporterOFF<MyMesh>::Save(m2,"torusTest.off",tri::io::Mask::IOM_FACECOLOR);
+//
+//    return 0;
+//}
 
