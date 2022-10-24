@@ -2,6 +2,10 @@
 // Created by boy on 22/09/22.
 //
 #include <cmath>
+#include <iostream>
+#include <stdlib.h>
+#include <random>
+#include <string>
 
 #include <vcg/complex/complex.h>
 #include <vcg/simplex/vertex/component.h>
@@ -13,6 +17,7 @@
 
 #define PRINTP(p) cout << p.X() <<" "<< p.Y() <<" "<< p.Z() <<endl;
 #define PRINTPP(p) cout << p->X() <<"\t"<< p->Y() <<"\t"<< p->Z() <<endl;
+#define DEBUG 1
 
 class MyVertex; class MyEdge; class MyFace;
 struct MyUsedTypes : public vcg::UsedTypes<vcg::Use<MyVertex>   ::AsVertexType,
@@ -28,20 +33,9 @@ class MyMesh    : public vcg::tri::TriMesh<std::vector<MyVertex>, std::vector<My
 using namespace vcg;
 using namespace std;
 //TODO
-//sphere shringking algorithm
-//  dato un mesh watertight con i suoi punti {(p_n, n_n)}_n
-//  un punto P sul bordo del mesh deve soddisfare 2 proprieta':
-//      1) la sfera passante per P deve essere vuota
-//      2) il vettore distanza tra P e centro C e' parallela alla norma n del punto P
-//  iniziamo una sfera grande che passa per P, la sfera deve contenere tutto il set di punti del mesh,
-//  e il centro C deve stare lungo il segmente (p, -n)
-//  se la distanza tra C e un punto F del mesh e' piu' corta del raggio R,
-//  allora il centro e' ricalcolato con la tangente a (P, n) e passante per F.
-
-
-//TODO
-//optimization
-//
+// come inizializzare
+// cosa e' s^t-1 quando sono all'iterazione iniziale?
+// instabilita' numerica
 
 class LSMAT{
 public:
@@ -50,22 +44,49 @@ public:
         tri::RequirePerVertexNormal(*m);
         tri::UpdateNormal<MyMesh>::PerVertexNormalized(*m);
         for(int i = 0; i < m->VN(); i++){
-            point_list.emplace_back((Point3d*)&(m->vert[i].P()));
-            normal_list.emplace_back((Point3d*)&(m->vert[i].N()));
+//            PRINTP(m->vert[i].P());
+            point_list.emplace_back(m->vert[i].P());
+            normal_list.emplace_back(m->vert[i].N());
         }
-        this->spheres = vector<Sphere3d>(m->VN(), Sphere3d(m->bbox.Center(),m->bbox.Diag()));
+        random_device rd;
+        mt19937 gen(rd());
+        uniform_real_distribution<> dis(0,1.0);
+
+        double r = 0;
+        Point3d center;
+        double offset = m->bbox.Diag()/10.0f;
+        cout <<"offset:" <<offset<<endl;
+        for(int i = 0; i < m->VN(); i++){
+            r = ((double) rand() / (RAND_MAX)) + 1;
+            center = point_list[i].operator-(normal_list[i]*r*offset);
+            this->spheres.emplace_back(Sphere3d(Sphere3d(center, m->bbox.Diag()*dis(gen))));
+        }
+
         this->spheres_old.resize(m->VN());
+
+//        cout << "***********INITIAL POINT_LIST**********"<<endl;
+//        for(int i = 0; i < point_list.size(); i++){
+//            PRINTPP(point_list[i]);
+//        }
+//
+//        cout << "***********INITIAL SPHERES**********"<<endl;
+//        for(int i = 0; i < spheres.size(); i++){
+//            cout << "center: ";
+//            PRINTP(spheres[i].Center());
+//            cout << "radius: "<<spheres[i].Radius()<<endl;
+//        }
+        cout <<"========================================================================================"<<endl;
     }
 
 
 private:
 
-    vector<Point3d*> point_list;
-    vector<Point3d*> normal_list;
+    vector<Point3d> point_list;
+    vector<Point3d> normal_list;
     vector<Sphere3d> spheres;
     vector<Sphere3d> spheres_old;
     double sigma = 0;
-    double omega_1 = 1;     //modifying one will update the other omega_*
+    double omega_1 = 0.5;     //modifying one will update the other omega_*
     double omega_2 = omega_1 / (0.007 * sigma + 0.02);
     double epsilon = 0.01;
     double h_blend = 0.74 * sigma + 0.49;
@@ -99,14 +120,14 @@ private:
         double energy = s.Radius() - (s_old.Radius() + epsilon);
         return sqrt(energy);
     }
-    //gradient of e_inscribed is the derivative of Phi_blend()
+    //gradient_s of e_inscribed is the derivative_s of Phi_blend()
     double e_inscribed(Sphere3d s, Sphere3d s_old){
         double sum = 0;
         for (int i = 0; i < point_list.size(); i++){
-            double _ramp = ramp(s_old.Center().operator-(*point_list[i]).Norm() - s_old.Radius());
+            double _ramp = ramp(s_old.Center().operator-(point_list[i]).Norm() - s_old.Radius());
             double _phi = phi(_ramp, h_support);
 
-            sum += _phi*  pow(phi_blend(s, s_old, *point_list[i], *normal_list[i], h_blend),2);
+            sum += _phi*  pow(phi_blend(s, s_old, point_list[i], normal_list[i], h_blend),2);
         }
         return sum;
     }
@@ -121,12 +142,7 @@ private:
     double phi_point(Sphere3d s, Point3d p){
         //RAMP(r-|| p_n - c ||_2)
         Point3d temp = p.operator-(s.Center());
-
-        double sum_square = 0;
-        for (int i= 0; i < 3; i++){
-            sum_square += pow(temp.V(i), 2);
-        }
-        return ramp(s.Radius() - sqrt(sum_square));
+        return ramp(s.Radius() - temp.Norm());
     }
 
     double phi_blend(Sphere3d s, Sphere3d s_old, Point3d p, Point3d n, double h_blend){
@@ -198,10 +214,14 @@ public:
 #pragma endregion
 
     vector<Sphere3d> compute(int n_runs, double threshold = 0.01){
+#if DEBUG
         for(int i = 0 ; i < point_list.size(); i++){
             cout<<"point" <<i<<": ";
-            PRINTPP(point_list[i])
+            PRINTP(point_list[i])
+            cout <<"normal:";
+            PRINTP(normal_list[i])
         }
+#endif
         double energy;
         double energy_old = 0;
         double residual;
@@ -213,7 +233,7 @@ public:
         Eigen::Vector4d vec;
         while(j++ < n_runs || residual > threshold){
             for(int i = 0; i<point_list.size(); i++){
-                tuple<Eigen::VectorXd, double, double> t = gauss_newton(*point_list[i], *normal_list[i], spheres[i], spheres_old[i], energy_old);
+                tuple<Eigen::VectorXd, double, double> t = gauss_newton(point_list[i], normal_list[i], spheres[i], spheres_old[i], energy_old);
                 energy_old = energy;
                 energy = get<1>(t);
                 residual = get<2>(t);
@@ -246,49 +266,91 @@ public:
         Sphere3d s_old = s1_old;
 
         Eigen::Vector4d X_n (s.Center().X(), s.Center().Y(), s.Center().Z(), s.Radius());
+#if DEBUG
+        cout << "p: ";
+        PRINTP(p)
+        cout << "n: ";
+        PRINTP(n)
+        cout << "sphere center: ";
+        PRINTP(s.Center());
+        cout <<"sphere radius: "<<s.Radius()<<endl;
+        cout << "sphere_old center: ";
+        PRINTP(s_old.Center());
+        cout <<"sphere_old radius: "<<s_old.Radius()<<endl;
+        cout << "X_n: "<<endl << X_n<<endl;
+#endif
 
         Eigen::Vector4d gradient_phi_plane;
         if(phi_plane(s, p, n) > 0){
-            gradient_phi_plane << -n.X(), -n.Y(), -n.Z(), 1;
+            gradient_phi_plane <<   2*(-n.X())*(s.Radius()-(p.operator-(s.Center()).dot(n))),
+                                    2*(-n.Y())*(s.Radius()-(p.operator-(s.Center()).dot(n))),
+                                    2*(-n.Z())*(s.Radius()-(p.operator-(s.Center()).dot(n))),
+                                    2*(s.Radius()-(p.operator-(s.Center()).dot(n)));
         }
         else{
             gradient_phi_plane << 0, 0, 0, 0;
         }
-
+#if DEBUG
+        cout << "phi_plane: " << phi_plane(s, p, n)<<endl;
+        cout << "gradient_phi_plane: " <<endl<< gradient_phi_plane<<endl;
+#endif
         double distancePC = p.operator-(s.Center()).Norm();
         Eigen::Vector4d gradient_phi_point;
         if(phi_point(s, p) > 0 ){
-            gradient_phi_point <<   (p.X()-s.Center().X())/distancePC,
-                                    (p.Y()-s.Center().Y())/distancePC,
-                                    (p.Z()-s.Center().Z())/distancePC,
-                                    1;
+            gradient_phi_point <<   2*((p.X()-s.Center().X())/distancePC)*(s.Radius() - distancePC),
+                                    2*((p.Y()-s.Center().Y())/distancePC)*(s.Radius() - distancePC),
+                                    2*((p.Z()-s.Center().Z())/distancePC)*(s.Radius() - distancePC),
+                                    2*(s.Radius() - distancePC);
         }
         else{
             gradient_phi_point << 0, 0, 0, 0;
         }
-        Eigen::Vector4d gradient_maximal(0,0,0,1);
+#if DEBUG
+        cout << "distance PC: " << distancePC<<endl;
+        cout << "phi_point: " << phi_point(s, p)<<endl;
+        cout << "gradient_phi_point: " <<endl<< gradient_phi_point<<endl;
+#endif
+        Eigen::Vector4d gradient_maximal(0,0,0,2*s.Radius()-s_old.Radius()-epsilon);
+#if DEBUG
+        cout << "gradient_maximal: " <<endl<< gradient_maximal<<endl;
+#endif
         double distanceCP = s.Center().operator-(p).Norm();
         Eigen::Vector4d gradient_pinning;
         if(e_pinning(s, p)){
-            gradient_pinning << (s.Center().X()-p.X())/distanceCP,
-                                (s.Center().Y()-p.Y())/distanceCP,
-                                (s.Center().Z()-p.Z())/distanceCP,
-                                -1;
+            gradient_pinning << 2*((s.Center().X()-p.X())/distanceCP) * (distanceCP - s.Radius() - d_in),
+                                2*((s.Center().Y()-p.Y())/distanceCP) * (distanceCP - s.Radius() - d_in),
+                                2*((s.Center().Z()-p.Z())/distanceCP) * (distanceCP - s.Radius() - d_in),
+                                -2*(distanceCP - s.Radius() - d_in);
         }
         else{
             gradient_pinning << 0, 0, 0, 0;
         }
-        Eigen::Vector4d jacobian(2*gradient_maximal+2*gradient_phi_plane+2*gradient_phi_point+gradient_pinning);
+#if DEBUG
+        cout << "distance CP: " << distanceCP<<endl;
+        cout << "e_pinning: "<< e_pinning(s,p)<<endl;
+        cout << "gradient_pinning: " <<endl<<gradient_pinning <<endl;
+#endif
+        Eigen::Vector4d jacobian = gradient_maximal+gradient_phi_plane+gradient_phi_point+gradient_pinning;
         Eigen::Matrix<double, 4, 4> matrix = jacobian * jacobian.transpose();
+#if DEBUG
+        cout << "jacobian : " << endl<<jacobian<<endl;
+        cout << "J^T J: " <<endl<<matrix <<endl;
+#endif
 
         Eigen::Vector4d vec = matrix.inverse() * jacobian;
+#if DEBUG
+        cout << "(J^T J)^-1 J^T " << endl<<vec<<endl;
+#endif
         double energy = e_medial(s, s_old);
-        double residual = abs(energy_old - energy);
+        double residual =energy_old - energy;
 
         vec = vec * residual;
-        cout <<"X_n - vec = "<< X_n - vec<<endl;
+#if DEBUG
+        cout <<"X_n - vec = "<< endl<<X_n - vec<<endl;
         cout << "eneegy: "<<energy<<endl;
         cout <<"residual: "<<residual<<endl;
+        cin.get();
+#endif
         return tuple<Eigen::VectorXd, double, double> {X_n - vec, energy,residual};
     }
 };
@@ -308,13 +370,10 @@ int main(int argc, char* argv[]){
 //        normals.emplace_back(m.vert[i].N());
 //    }
 
-
-    Point3d p;
-
     LSMAT lsmat(&m);
-    for(int j = 0; j < 1; j++){
+    for(int j = 0; j < 10; j++){
         cout << "*****************LSMAT iteration "<< j <<"******************"<<endl;
-        string filename = "LSMAT_"+ to_string(j)+".off";
+        string filename = to_string(*basename(argv[1])) + "_LSMAT_"+ to_string(j)+".off";
         vector<Sphere3d> spheres = lsmat.compute(1);
 
         for(int i = 0; i<m.VN(); i++){
