@@ -1,34 +1,16 @@
 //
 // Created by boy on 22/09/22.
 //
+#ifndef LSMAT_HPP
+#define LSMAT_HPP
+
 #include <cmath>
 #include <iostream>
 #include <stdlib.h>
 #include <random>
 #include <string>
 
-#include <vcg/complex/complex.h>
-#include <vcg/simplex/vertex/component.h>
-#include <Eigen/Dense>
-#include<wrap/io_trimesh/import_obj.h>
-#include<wrap/io_trimesh/export_obj.h>
-#include<wrap/io_trimesh/import_off.h>
-#include<wrap/io_trimesh/export_off.h>
-
-#define PRINTP(p) cout << p.X() <<" "<< p.Y() <<" "<< p.Z() <<endl;
-#define PRINTPP(p) cout << p->X() <<"\t"<< p->Y() <<"\t"<< p->Z() <<endl;
-#define DEBUG 1
-
-class MyVertex; class MyEdge; class MyFace;
-struct MyUsedTypes : public vcg::UsedTypes<vcg::Use<MyVertex>   ::AsVertexType,
-        vcg::Use<MyEdge>     ::AsEdgeType,
-        vcg::Use<MyFace>     ::AsFaceType>{};
-
-class MyVertex  : public vcg::Vertex< MyUsedTypes, vcg::vertex::Coord3f, vcg::vertex::Normal3f, vcg::vertex::VFAdj, vcg::vertex::BitFlags, vcg::vertex::Color4b>{};
-class MyFace    : public vcg::Face<   MyUsedTypes, vcg::face::FFAdj, vcg::face::VFAdj, vcg::face::VertexRef, vcg::face::Color4b, vcg::face::BitFlags > {};
-class MyEdge    : public vcg::Edge<   MyUsedTypes> {};
-
-class MyMesh    : public vcg::tri::TriMesh<std::vector<MyVertex>, std::vector<MyFace> , std::vector<MyEdge>  > {};
+#include "utils.hpp"
 
 using namespace vcg;
 using namespace std;
@@ -37,6 +19,12 @@ using namespace std;
 // cosa e' s^t-1 quando sono all'iterazione iniziale?
 // instabilita' numerica
 
+
+//TODO
+//  implemantare la versione "classica"
+//  debugging visuale
+// vedere se le sfere sono corrette
+// gnerare punti e trovare l'energia minima nella bounding box
 class LSMAT{
 public:
     LSMAT(MyMesh *m){
@@ -59,22 +47,23 @@ public:
         for(int i = 0; i < m->VN(); i++){
             r = ((double) rand() / (RAND_MAX)) + 1;
             center = point_list[i].operator-(normal_list[i]*r*offset);
-            this->spheres.emplace_back(Sphere3d(Sphere3d(center, m->bbox.Diag()*dis(gen))));
+            this->spheres.emplace_back(Sphere3d(center, m->bbox.Diag()*dis(gen)));
         }
 
         this->spheres_old.resize(m->VN());
+#if DEBUG
+        cout << "***********INITIAL POINT_LIST**********"<<endl;
+        for(auto & i : point_list){
+            PRINTP(i)
+        }
 
-//        cout << "***********INITIAL POINT_LIST**********"<<endl;
-//        for(int i = 0; i < point_list.size(); i++){
-//            PRINTPP(point_list[i]);
-//        }
-//
-//        cout << "***********INITIAL SPHERES**********"<<endl;
-//        for(int i = 0; i < spheres.size(); i++){
-//            cout << "center: ";
-//            PRINTP(spheres[i].Center());
-//            cout << "radius: "<<spheres[i].Radius()<<endl;
-//        }
+        cout << "***********INITIAL SPHERES**********"<<endl;
+        for(auto & sphere : spheres){
+            cout << "center: ";
+            PRINTP(sphere.Center())
+            cout << "radius: "<<sphere.Radius()<<endl;
+        }
+#endif
         cout <<"========================================================================================"<<endl;
     }
 
@@ -86,7 +75,7 @@ private:
     vector<Sphere3d> spheres;
     vector<Sphere3d> spheres_old;
     double sigma = 0;
-    double omega_1 = 0.5;     //modifying one will update the other omega_*
+    double omega_1 = 0.1;     //modifying one will update the other omega_*
     double omega_2 = omega_1 / (0.007 * sigma + 0.02);
     double epsilon = 0.01;
     double h_blend = 0.74 * sigma + 0.49;
@@ -127,7 +116,7 @@ private:
             double _ramp = ramp(s_old.Center().operator-(point_list[i]).Norm() - s_old.Radius());
             double _phi = phi(_ramp, h_support);
 
-            sum += _phi*  pow(phi_blend(s, s_old, point_list[i], normal_list[i], h_blend),2);
+            sum += _phi *  pow(phi_blend(s, s_old, point_list[i], normal_list[i]),2);
         }
         return sum;
     }
@@ -145,7 +134,7 @@ private:
         return ramp(s.Radius() - temp.Norm());
     }
 
-    double phi_blend(Sphere3d s, Sphere3d s_old, Point3d p, Point3d n, double h_blend){
+    double phi_blend(Sphere3d s, Sphere3d s_old, Point3d p, Point3d n){
         //c^(t-1) - n(c^(t-1)-p) * n
         Point3d projection = s_old.Center().operator-(n.operator*(s_old.Center().operator-(p).operator*(n)));
         return mix(pow(phi_plane(s, p, n),2), pow(phi_point(s, p),2), phi( projection.operator-(p), h_blend));
@@ -231,6 +220,7 @@ public:
         Sphere3d newSphere;
         Point3d newPoint;
         Eigen::Vector4d vec;
+
         while(j++ < n_runs || residual > threshold){
             for(int i = 0; i<point_list.size(); i++){
                 tuple<Eigen::VectorXd, double, double> t = gauss_newton(point_list[i], normal_list[i], spheres[i], spheres_old[i], energy_old);
@@ -355,32 +345,5 @@ public:
     }
 };
 
-int main(int argc, char* argv[]){
-    MyMesh m;
 
-    tri::io::ImporterOFF<MyMesh>::Open(m,argv[1]);
-    tri::UpdateBounding<MyMesh>::Box(m);
-    tri::RequirePerVertexNormal(m);
-    tri::UpdateNormal<MyMesh>::PerVertexNormalized(m);
-
-//    vector<Point3d> points;
-//    vector<Point3d> normals;
-//    for(int i = 0; i < m.VN(); i++){
-//        points.emplace_back(m.vert[i].P());
-//        normals.emplace_back(m.vert[i].N());
-//    }
-
-    LSMAT lsmat(&m);
-    for(int j = 0; j < 10; j++){
-        cout << "*****************LSMAT iteration "<< j <<"******************"<<endl;
-        string filename = to_string(*basename(argv[1])) + "_LSMAT_"+ to_string(j)+".off";
-        vector<Sphere3d> spheres = lsmat.compute(1);
-
-        for(int i = 0; i<m.VN(); i++){
-            m.vert[i].P() = spheres[i].Center();
-        }
-
-        tri::io::ExporterOFF<MyMesh>::Save(m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
-    }
-
-}
+#endif //LSMAT_HPP

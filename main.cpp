@@ -1,12 +1,5 @@
 #include <iostream>
 
-#include <vcg/complex/complex.h>
-#include <vcg/simplex/vertex/component.h>
-#include<wrap/io_trimesh/import_obj.h>
-#include<wrap/io_trimesh/export_obj.h>
-#include<wrap/io_trimesh/import_off.h>
-#include<wrap/io_trimesh/export_off.h>
-
 #include "RboxPoints.h"
 #include "QhullError.h"
 #include "QhullQh.h"
@@ -18,18 +11,9 @@
 #include "QhullVertex.h"
 #include "Qhull.h"
 
-#define PRINTP(p) cout << p.X() <<" "<< p.Y() <<" "<< p.Z() <<endl;
-
-class MyVertex; class MyEdge; class MyFace;
-struct MyUsedTypes : public vcg::UsedTypes<vcg::Use<MyVertex>   ::AsVertexType,
-        vcg::Use<MyEdge>     ::AsEdgeType,
-        vcg::Use<MyFace>     ::AsFaceType>{};
-
-class MyVertex  : public vcg::Vertex< MyUsedTypes, vcg::vertex::Coord3f, vcg::vertex::Normal3f, vcg::vertex::VFAdj, vcg::vertex::BitFlags, vcg::vertex::Color4b>{};
-class MyFace    : public vcg::Face<   MyUsedTypes, vcg::face::FFAdj, vcg::face::VFAdj, vcg::face::VertexRef, vcg::face::Color4b, vcg::face::BitFlags > {};
-class MyEdge    : public vcg::Edge<   MyUsedTypes> {};
-
-class MyMesh    : public vcg::tri::TriMesh<std::vector<MyVertex>, std::vector<MyFace> , std::vector<MyEdge>  > {};
+#include "sphereShrinking.hpp"
+#include "LSMAT.hpp"
+#include "utils.hpp"
 
 using namespace vcg;
 using namespace std;
@@ -344,4 +328,41 @@ void searchFirstPole(qhT *qh, int dim, MyMesh &m, double threshold){
 //
 //    return 0;
 //}
+
+
+int main(int argc, char* argv[]){
+    MyMesh m;
+
+    tri::io::ImporterOFF<MyMesh>::Open(m,argv[1]);
+    tri::UpdateBounding<MyMesh>::Box(m);
+    tri::RequirePerVertexNormal(m);
+    tri::UpdateNormal<MyMesh>::PerVertexNormalized(m);
+
+//    LSMAT lsmat(&m);
+//    for(int j = 0; j < 10; j++){
+//        cout << "*****************LSMAT iteration "<< j <<"******************"<<endl;
+//        string filename = to_string(*basename(argv[1])) + "_LSMAT_"+ to_string(j)+".off";
+//        vector<Sphere3d> spheres = lsmat.compute(1);
+//
+//        for(int i = 0; i<m.VN(); i++){
+//            m.vert[i].P() = spheres[i].Center();
+//        }
+
+
+
+//        tri::io::ExporterOFF<MyMesh>::Save(m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
+//    }
+    //TODO
+    //  esportare le sfere con addSphere()
+    //  mappare le sfere con i colori
+    SphereShrinking ss = SphereShrinking(&m);
+    ss.compute_ma_point();
+    vector<Sphere3d> medial = ss.getMedialSpheres();
+    int i = 0;
+    for(auto vert = m.vert.begin(); vert != m.vert.end(); vert++){
+        vert->P() = medial[i++].Center();
+    }
+    tri::io::ExporterOFF<MyMesh>::Save(m, "provaSS.off", tri::io::Mask::IOM_FACECOLOR);
+
+}
 
