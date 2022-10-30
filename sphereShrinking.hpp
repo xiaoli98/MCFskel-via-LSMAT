@@ -59,23 +59,7 @@ public:
 
     double compute_radius(Point3d p1, Point3d n1, Point3d p2){
         double distance = Distance(p1,p2);
-#if DEBUG
-        cout << "\t##################################RADIUS###########################################"<<endl;
-        cout <<"\tp1: ";
-        PRINTP(p1)
-        cout <<"\tn1: ";
-        PRINTP(n1)
-        cout<<"\tp2: ";
-        PRINTP(p2)
-        cout << "\tdistance: "<< distance<<endl;
-        cout << "\tnumerator of theta: "<< n1.operator*(p1.operator-(p2)) << endl;
-#endif
         double theta = safe_acos((n1.operator*(p1.operator-(p2))) / distance);
-#if DEBUG
-        cout << "\ttheta: "<< theta<<endl;
-        cout << "\tout: "<< distance / (2 * cos(theta))<<endl;
-        cout << "\t##################################RADIUS###########################################"<<endl;
-#endif
         return distance / (2 * cos(theta));
     }
 
@@ -91,31 +75,61 @@ public:
             cout <<"p[i]: ";
             PRINTP(point_list[i])
 #endif
-        }while(point_list[i] == p);
+        }while(point_list[i].operator==(p));
         return point_list[i];
     }
 
-    /// return the nearest neighbor of p in th point_list
-    /// \param p the point which to find the neighbor
+    /// return the nearest neighbor of c in th point_list without p
+    /// \param c the point which to find the neighbor
+    /// \param p the one outside the set
     /// \return the nearest neighbor point
-    Point3d nearestNeighbors(Point3d p){
+    Point3d nearestNeighbor(Point3d c, Point3d p){
         auto min_dist = DBL_MAX;
         double dist = 0;
         Point3d min_dist_point;
-        for(auto point = point_list.begin(); point < point_list.end() && *point != p; point++){
-            dist = Distance(p, *point);
+        for(auto point = point_list.begin(); point < point_list.end(); point++){
+            if(point->operator==(p)) continue;
+            dist = Distance(c, *point);
+//            cout <<"\tdistance is:\t" <<dist<<"\t with:";
+//            PRINTPP(point)
             if(dist < min_dist) {
+//                cout<<"\t\tMIN DIST CHANGED"<<endl;
                 min_dist = dist;
                 min_dist_point = *point;
             }
         }
 #if DEBUG
         cout <<"NN of: ";
-        cout << p.X() <<"\t"<< p.Y() <<"\t"<< p.Z();
+        cout << c.X() <<"\t"<< c.Y() <<"\t"<< c.Z();
         cout <<"\tis: ";
-        PRINTP(min_dist_point)
+        cout << min_dist_point.X() << "\t" << min_dist_point.Y() << "\t" << min_dist_point.Z();
+        cout << "\t\tdistance: "<<min_dist<<endl;
 #endif
         return min_dist_point;
+    }
+
+    Point3d compute_ma_point(Point3d p1, Point3d n1){
+        Point3d p = p1;
+        Point3d n = n1;
+        Point3d p_tilde;
+        double radius = 0;
+        double radius_new;
+        double radius_init;
+        Point3d c;
+
+        p_tilde = randomPoint(p);
+        radius_init = compute_radius(p, n,p_tilde);
+        radius_new = radius_init;
+        do{
+            radius = radius_new;
+            c = p.operator-(radius * n);
+            p_tilde = nearestNeighbor(c, p);
+            radius_new = compute_radius(p, n,p_tilde);
+#if DEBUG
+            cout << "radius: "<<radius <<"\t"<<"radius_new:" << radius_new<<endl;
+#endif
+        }while(radius != radius_new);
+        return c;
     }
 
     void compute_ma_point(){
@@ -124,49 +138,73 @@ public:
         Point3d p_tilde;
         double radius = 0;
         double radius_new;
+        double radius_init;
         Point3d c;
+
         for(int i = 0; i < point_list.size(); i++){
+            cout<<"Point "<<i<<endl;
             p = point_list[i];
             n = normal_list[i];
 #if DEBUG
-            cout << "p:";
+            cout << "p: ";
             PRINTP(p)
-            cout << "n:";
+            cout << "n: ";
             PRINTP(n)
+            cout<<"p normalized: ";
+            PRINTP(p.normalized())
 #endif
-            if(p == *(point_list.begin()))
+            if(p == *(point_list.begin())) {
                 p_tilde = randomPoint(p);
 #if DEBUG
-            cout <<"random point:";
-            PRINTP(p_tilde);
+                cout <<"random point:";
+                PRINTP(p_tilde);
 #endif
-            radius = compute_radius(p, n, p_tilde);
-            radius_new = radius;
-
-            string fileName = "Sphere_" + to_string(i) +"_init.off";
-            MyMesh myMeshInit;
-            create_sphere(myMeshInit, p_tilde, radius);
-            tri::io::ExporterOFF<MyMesh>::Save(myMeshInit, fileName.c_str(), tri::io::Mask::IOM_FACECOLOR);
-            int j = 0;
+            }
+            if(p == p_tilde) p_tilde = randomPoint(p);
+            assert(p != p_tilde);
+            radius_init = compute_radius(p, n,p_tilde);
+            radius_new = radius_init;
+#if DEBUG
+            cout << "initial radius:" <<radius_init<<endl;
+#endif
             do{
                 radius = radius_new;
-                c = p.operator-(n.operator*(radius));
-                p_tilde = nearestNeighbors(c);
-                radius_new = compute_radius(p, n, p_tilde);
+                c = p.operator-(n.normalized().operator*(radius));
+                p_tilde = nearestNeighbor(c, p);
+                radius_new = compute_radius(p, n,p_tilde);
 #if DEBUG
                 cout << "radius: "<<radius <<"\t"<<"radius_new:" << radius_new<<endl;
-
-                string fileName = "Sphere_" + to_string(i) +"_"+ to_string(j)+".off";
-
-                MyMesh myMesh;
-                create_sphere(myMesh, c, radius_new);
-                tri::io::ExporterOFF<MyMesh>::Save(myMesh, fileName.c_str(), tri::io::Mask::IOM_FACECOLOR);
-                j++;
-                cin.get();
 #endif
             }while(radius != radius_new);
+#if DEBUG
+            MyMesh m1;
+            tri::BuildMeshFromCoordVector(m1, uniform_sphere_points(c, radius));
+
+            tri::Append<MyMesh, MyMesh>::Mesh(m1, *m);
+            string filename = "sphere_of_" + to_string(i) + ".off";
+            tri::io::ExporterOFF<MyMesh>::Save(m1, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
+            cin.get();
+#endif
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
+    }
+
+    vector<Point3d> uniform_sphere_points(Point3d c, double radius){
+        std::mt19937 generator;
+        std::uniform_real_distribution<double> uniform01(0.0, 1.0);
+        int N =1000;
+
+        vector<Point3d> points;
+        for (int i = 0; i < N; i++) {
+            // incorrect way
+            double theta = 2 * M_PI * uniform01(generator);
+            double phi = acos(1 - 2 * uniform01(generator));
+            double x = c.X() +radius * sin(phi) * cos(theta);
+            double y = c.Y() +radius * sin(phi) * sin(theta);
+            double z = c.Z() +radius * cos(phi);
+            points.emplace_back(Point3d(x,y,z));
+        }
+        return points;
     }
 
     template<class MeshType>
@@ -176,10 +214,7 @@ public:
         typedef typename MeshType::VertexPointer  VertexPointer;
         typedef typename MeshType::VertexIterator VertexIterator;
         typedef typename MeshType::FaceIterator   FaceIterator;
-//        std::mt19937 generator ();
-//        std::uniform_real_distribution<double> uniform01(0.0, 1.0);
-//
-//        double theta, phi, x, y, z;
+
         int n_vert = 12;
         int n_faces = 20;
         tri::Allocator<MyMesh>::AddVertices(m, n_vert);

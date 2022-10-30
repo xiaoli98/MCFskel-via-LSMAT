@@ -355,13 +355,27 @@ int main(int argc, char* argv[]){
     //TODO
     //  esportare le sfere con addSphere()
     //  mappare le sfere con i colori
+
     SphereShrinking ss = SphereShrinking(&m);
+//    for(auto point = m.vert.begin(); point < m.vert.end(); point++){
+//        point->P() = ss.compute_ma_point(point->P(), point->N());
+//    }
+
     ss.compute_ma_point();
     vector<Sphere3d> medial = ss.getMedialSpheres();
+
+    for(auto m = medial.begin(); m < medial.end(); m++){
+        cout<<m->Radius()<<"\t\t";
+        PRINTP(m->Center())
+    }
+
     int i = 0;
     for(auto vert = m.vert.begin(); vert != m.vert.end(); vert++){
-        vert->P() = medial[i++].Center();
+        if(medial[i].Radius() > 0)
+            vert->P() = medial[i].Center();
+        i++;
     }
+
     tri::io::ExporterOFF<MyMesh>::Save(m, "provaSS.off", tri::io::Mask::IOM_FACECOLOR);
 
 }
