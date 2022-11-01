@@ -47,36 +47,19 @@ public:
             normal_list.emplace_back(m->vert[i].N());
         }
     }
-    double safe_acos(double value) {
-        if (value<=-1.0) {
-            return M_PI;
-        } else if (value>=1.0) {
-            return 0;
-        } else {
-            return acos(value);
-        }
-    }
 
     double compute_radius(Point3d p1, Point3d n1, Point3d p2){
         double distance = Distance(p1,p2);
-        double theta = safe_acos((n1.operator*(p1.operator-(p2))) / distance);
-        return distance / (2 * cos(theta));
+        double cos_theta = n1.operator*(p1.operator-(p2))/distance;
+        return distance / (2 * cos_theta);
     }
 
-    /// random point different from p
+    /// initial point from p
     /// \param p point
     /// \return random point from point_list
-    Point3d randomPoint(Point3d p) {
-        size_t i =0;
-        do {
-            i = rand() % (point_list.size() - 1);
-#if DEBUG
-            cout <<"i = "<<i<<endl;
-            cout <<"p[i]: ";
-            PRINTP(point_list[i])
-#endif
-        }while(point_list[i].operator==(p));
-        return point_list[i];
+    Point3d init_point(Point3d p, Point3d n) {
+        Point3d center = p.operator-(n.operator*(m->bbox.Diag()/2));
+        return center;
     }
 
     /// return the nearest neighbor of c in th point_list without p
@@ -90,46 +73,13 @@ public:
         for(auto point = point_list.begin(); point < point_list.end(); point++){
             if(point->operator==(p)) continue;
             dist = Distance(c, *point);
-//            cout <<"\tdistance is:\t" <<dist<<"\t with:";
-//            PRINTPP(point)
             if(dist < min_dist) {
-//                cout<<"\t\tMIN DIST CHANGED"<<endl;
                 min_dist = dist;
                 min_dist_point = *point;
             }
         }
-#if DEBUG
-        cout <<"NN of: ";
-        cout << c.X() <<"\t"<< c.Y() <<"\t"<< c.Z();
-        cout <<"\tis: ";
-        cout << min_dist_point.X() << "\t" << min_dist_point.Y() << "\t" << min_dist_point.Z();
-        cout << "\t\tdistance: "<<min_dist<<endl;
-#endif
+
         return min_dist_point;
-    }
-
-    Point3d compute_ma_point(Point3d p1, Point3d n1){
-        Point3d p = p1;
-        Point3d n = n1;
-        Point3d p_tilde;
-        double radius = 0;
-        double radius_new;
-        double radius_init;
-        Point3d c;
-
-        p_tilde = randomPoint(p);
-        radius_init = compute_radius(p, n,p_tilde);
-        radius_new = radius_init;
-        do{
-            radius = radius_new;
-            c = p.operator-(radius * n);
-            p_tilde = nearestNeighbor(c, p);
-            radius_new = compute_radius(p, n,p_tilde);
-#if DEBUG
-            cout << "radius: "<<radius <<"\t"<<"radius_new:" << radius_new<<endl;
-#endif
-        }while(radius != radius_new);
-        return c;
     }
 
     void compute_ma_point(){
@@ -145,45 +95,46 @@ public:
             cout<<"Point "<<i<<endl;
             p = point_list[i];
             n = normal_list[i];
-#if DEBUG
-            cout << "p: ";
-            PRINTP(p)
-            cout << "n: ";
-            PRINTP(n)
-            cout<<"p normalized: ";
-            PRINTP(p.normalized())
-#endif
-            if(p == *(point_list.begin())) {
-                p_tilde = randomPoint(p);
-#if DEBUG
-                cout <<"random point:";
-                PRINTP(p_tilde);
-#endif
-            }
-            if(p == p_tilde) p_tilde = randomPoint(p);
-            assert(p != p_tilde);
+
+            //could be improved
+            //the original paper says to use the last p_tilde,
+            // but if the point cloud is not ordered it brings to negative radius
+            p_tilde = init_point(p, n);
+
             radius_init = compute_radius(p, n,p_tilde);
             radius_new = radius_init;
 #if DEBUG
             cout << "initial radius:" <<radius_init<<endl;
 #endif
-            do{
+            while(true){
                 radius = radius_new;
-                c = p.operator-(n.normalized().operator*(radius));
+                c = p.operator-(n.operator*(radius));
+//                if(radius_new < 0){
+//                    tri::Allocator<MyMesh>::AddVertex(*m, p_tilde, Color4b::Blue);
+//                    m->vert[i].C() = Color4b ::Red;
+//                    tri::Allocator<MyMesh>::AddVertex(*m, c, Color4b::Green);
+//                    tri::Allocator<MyMesh>::AddFace(*m, p, p_tilde, c)->C()=Color4b::Red;
+//
+//                    tri::io::ExporterOFF<MyMesh>::Save(*m, "redPoint.off", tri::io::Mask::IOM_FACECOLOR+tri::io::Mask::IOM_VERTCOLOR);
+//                    cout<<"NEGATIVE RADIUS"<<endl;
+//                    cout <<"centre: ";
+//                    PRINTP(c)
+//                    cout << "radius: "<<radius<<"\t radius_new: "<<radius_new<<endl;
+//                    cin.get();
+//                }
                 p_tilde = nearestNeighbor(c, p);
                 radius_new = compute_radius(p, n,p_tilde);
-#if DEBUG
-                cout << "radius: "<<radius <<"\t"<<"radius_new:" << radius_new<<endl;
-#endif
-            }while(radius != radius_new);
+
+                if(radius - radius_new < 0.0001)
+                    break;
+            };
 #if DEBUG
             MyMesh m1;
-            tri::BuildMeshFromCoordVector(m1, uniform_sphere_points(c, radius));
-
+            create_sphere(m1, c, radius_new);
+            tri::Sphere(m1);
             tri::Append<MyMesh, MyMesh>::Mesh(m1, *m);
             string filename = "sphere_of_" + to_string(i) + ".off";
             tri::io::ExporterOFF<MyMesh>::Save(m1, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
-            cin.get();
 #endif
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
@@ -196,7 +147,6 @@ public:
 
         vector<Point3d> points;
         for (int i = 0; i < N; i++) {
-            // incorrect way
             double theta = 2 * M_PI * uniform01(generator);
             double phi = acos(1 - 2 * uniform01(generator));
             double x = c.X() +radius * sin(phi) * cos(theta);
@@ -254,7 +204,7 @@ public:
         VertexIterator vi;
         int i;
         for(i=0,vi=m.vert.begin();vi!=m.vert.end();++i,++vi){
-            (*vi).P() = radius * center.operator+(vv[i]);
+            (*vi).P() =vv[i];
             ivp[i]=&*vi;
         }
 
@@ -264,8 +214,13 @@ public:
             (*fi).V(1)=ivp[ff[i][1]];
             (*fi).V(2)=ivp[ff[i][2]];
         }
-
-        tri::Sphere(m, 4);
+        cout << "#######################################################################"<<endl;
+        cout << "\tradius: "<<radius<<endl;
+        cout <<"\tcentre: ";
+        PRINTP(center)
+        tri::Sphere(m,1);
+        tri::UpdatePosition<MyMesh>::Translate(m, center);
+        tri::UpdatePosition<MyMesh>::Scale(m, radius);
 //        tri::Append<MyMesh, MyMesh>::MeshCopy(m, in);
 //
 //        CoordType coord;

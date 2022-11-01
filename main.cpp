@@ -375,8 +375,8 @@ int main(int argc, char* argv[]){
             vert->P() = medial[i].Center();
         i++;
     }
-
-    tri::io::ExporterOFF<MyMesh>::Save(m, "provaSS.off", tri::io::Mask::IOM_FACECOLOR);
+    string outFileName = strcat(basename(argv[1]), "_SS.off") ;
+    tri::io::ExporterOFF<MyMesh>::Save(m, outFileName.c_str(), tri::io::Mask::IOM_FACECOLOR);
 
 }
 
