@@ -338,45 +338,40 @@ int main(int argc, char* argv[]){
     tri::RequirePerVertexNormal(m);
     tri::UpdateNormal<MyMesh>::PerVertexNormalized(m);
 
-//    LSMAT lsmat(&m);
-//    for(int j = 0; j < 10; j++){
-//        cout << "*****************LSMAT iteration "<< j <<"******************"<<endl;
-//        string filename = to_string(*basename(argv[1])) + "_LSMAT_"+ to_string(j)+".off";
-//        vector<Sphere3d> spheres = lsmat.compute(1);
-//
+#if LS_MAT
+    LSMAT lsmat(&m);
+    for(int j = 0; j < 10; j++){
+        cout << "*****************LSMAT iteration "<< j <<"******************"<<endl;
+        string filename = to_string(*basename(argv[1])) + "_LSMAT_"+ to_string(j)+".off";
+        vector<Sphere3d> spheres = lsmat.compute(5);
+
 //        for(int i = 0; i<m.VN(); i++){
 //            m.vert[i].P() = spheres[i].Center();
 //        }
-
-
-
 //        tri::io::ExporterOFF<MyMesh>::Save(m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
-//    }
+    }
+#endif
     //TODO
     //  esportare le sfere con addSphere()
     //  mappare le sfere con i colori
 
+#if SPHERE_SHRINK
     SphereShrinking ss = SphereShrinking(&m);
-//    for(auto point = m.vert.begin(); point < m.vert.end(); point++){
-//        point->P() = ss.compute_ma_point(point->P(), point->N());
-//    }
-
     ss.compute_ma_point();
     vector<Sphere3d> medial = ss.getMedialSpheres();
-
+#if DEBUG
     for(auto m = medial.begin(); m < medial.end(); m++){
         cout<<m->Radius()<<"\t\t";
         PRINTP(m->Center())
     }
-
-    int i = 0;
+#endif
+    int i= 0;
     for(auto vert = m.vert.begin(); vert != m.vert.end(); vert++){
-        if(medial[i].Radius() > 0)
-            vert->P() = medial[i].Center();
+        vert->P() = medial[i].Center();
         i++;
     }
     string outFileName = strcat(basename(argv[1]), "_SS.off") ;
     tri::io::ExporterOFF<MyMesh>::Save(m, outFileName.c_str(), tri::io::Mask::IOM_FACECOLOR);
-
+#endif
 }
 

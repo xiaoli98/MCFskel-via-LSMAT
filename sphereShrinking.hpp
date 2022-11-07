@@ -106,138 +106,31 @@ public:
 #if DEBUG
             cout << "initial radius:" <<radius_init<<endl;
 #endif
+            int z = 0;
             while(true){
                 radius = radius_new;
                 c = p.operator-(n.operator*(radius));
-//                if(radius_new < 0){
-//                    tri::Allocator<MyMesh>::AddVertex(*m, p_tilde, Color4b::Blue);
-//                    m->vert[i].C() = Color4b ::Red;
-//                    tri::Allocator<MyMesh>::AddVertex(*m, c, Color4b::Green);
-//                    tri::Allocator<MyMesh>::AddFace(*m, p, p_tilde, c)->C()=Color4b::Red;
-//
-//                    tri::io::ExporterOFF<MyMesh>::Save(*m, "redPoint.off", tri::io::Mask::IOM_FACECOLOR+tri::io::Mask::IOM_VERTCOLOR);
-//                    cout<<"NEGATIVE RADIUS"<<endl;
-//                    cout <<"centre: ";
-//                    PRINTP(c)
-//                    cout << "radius: "<<radius<<"\t radius_new: "<<radius_new<<endl;
-//                    cin.get();
-//                }
                 p_tilde = nearestNeighbor(c, p);
                 radius_new = compute_radius(p, n,p_tilde);
-
+#if DEBUG
+                if(i == 0)
+                    add_octahedron(*m, c, radius_new, "SS_"+ to_string(z++)+".off");
+#endif
                 if(radius - radius_new < 0.0001)
                     break;
             };
 #if DEBUG
             MyMesh m1;
-            create_sphere(m1, c, radius_new);
-            tri::Sphere(m1);
-            tri::Append<MyMesh, MyMesh>::Mesh(m1, *m);
-            string filename = "sphere_of_" + to_string(i) + ".off";
-            tri::io::ExporterOFF<MyMesh>::Save(m1, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
+//            add_sphere(m1, c, radius_new, Color4b::Red);
+//            tri::Sphere(m1);
+//            tri::Append<MyMesh, MyMesh>::Mesh(m1, *m);
+//            string filename = "sphere_of_" + to_string(i) + ".off";
+//            tri::io::ExporterOFF<MyMesh>::Save(m1, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
 #endif
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
     }
 
-    vector<Point3d> uniform_sphere_points(Point3d c, double radius){
-        std::mt19937 generator;
-        std::uniform_real_distribution<double> uniform01(0.0, 1.0);
-        int N =1000;
-
-        vector<Point3d> points;
-        for (int i = 0; i < N; i++) {
-            double theta = 2 * M_PI * uniform01(generator);
-            double phi = acos(1 - 2 * uniform01(generator));
-            double x = c.X() +radius * sin(phi) * cos(theta);
-            double y = c.Y() +radius * sin(phi) * sin(theta);
-            double z = c.Z() +radius * cos(phi);
-            points.emplace_back(Point3d(x,y,z));
-        }
-        return points;
-    }
-
-    template<class MeshType>
-    void create_sphere(MeshType &m, Point3d center, double radius){
-        typedef typename MeshType::ScalarType ScalarType;
-        typedef typename MeshType::CoordType CoordType;
-        typedef typename MeshType::VertexPointer  VertexPointer;
-        typedef typename MeshType::VertexIterator VertexIterator;
-        typedef typename MeshType::FaceIterator   FaceIterator;
-
-        int n_vert = 12;
-        int n_faces = 20;
-        tri::Allocator<MyMesh>::AddVertices(m, n_vert);
-        tri::Allocator<MyMesh>::AddFaces(m, n_faces);
-
-        ScalarType L = ScalarType((math::Sqrt(5.0)+1.0)/2.0);
-        CoordType vv[12]={
-                CoordType ( 0, L, 1),
-                CoordType ( 0, L,-1),
-                CoordType ( 0,-L, 1),
-                CoordType ( 0,-L,-1),
-
-                CoordType ( L, 1, 0),
-                CoordType ( L,-1, 0),
-                CoordType (-L, 1, 0),
-                CoordType (-L,-1, 0),
-
-                CoordType ( 1, 0, L),
-                CoordType (-1, 0, L),
-                CoordType ( 1, 0,-L),
-                CoordType (-1, 0,-L)
-        };
-
-        int ff[20][3]={
-                {1,0,4},{0,1,6},{2,3,5},{3,2,7},
-                {4,5,10},{5,4,8},{6,7,9},{7,6,11},
-                {8,9,2},{9,8,0},{10,11,1},{11,10,3},
-                {0,8,4},{0,6,9},{1,4,10},{1,11,6},
-                {2,5,8},{2,9,7},{3,10,5},{3,7,11}
-        };
-
-        m.Clear();
-        tri::Allocator<MeshType>::AddVertices(m,12);
-        tri::Allocator<MeshType>::AddFaces(m,20);
-        VertexPointer ivp[12];
-
-        VertexIterator vi;
-        int i;
-        for(i=0,vi=m.vert.begin();vi!=m.vert.end();++i,++vi){
-            (*vi).P() =vv[i];
-            ivp[i]=&*vi;
-        }
-
-        FaceIterator fi;
-        for(i=0,fi=m.face.begin();fi!=m.face.end();++i,++fi){
-            (*fi).V(0)=ivp[ff[i][0]];
-            (*fi).V(1)=ivp[ff[i][1]];
-            (*fi).V(2)=ivp[ff[i][2]];
-        }
-        cout << "#######################################################################"<<endl;
-        cout << "\tradius: "<<radius<<endl;
-        cout <<"\tcentre: ";
-        PRINTP(center)
-        tri::Sphere(m,1);
-        tri::UpdatePosition<MyMesh>::Translate(m, center);
-        tri::UpdatePosition<MyMesh>::Scale(m, radius);
-//        tri::Append<MyMesh, MyMesh>::MeshCopy(m, in);
-//
-//        CoordType coord;
-//        VertexIterator vi;
-//        int i;
-//        for (i = 0, vi=in.vert.begin(); vi != in.vert.end(); i++, vi++){
-//
-//            theta = 2 * M_PI * uniform01(generator);
-//            phi = M_PI * uniform01(generator);
-//            x = center.X() + radius * sin(phi) * cos(theta);
-//            y = center.Y() + radius * sin(phi) * sin(theta);
-//            z = center.Z() + radius * cos(phi);
-//            coord = CoordType(x,y,z);
-//            (*vi).P() = coord;
-//        }
-
-    }
 };
 
 #endif //MCF_SKET_SPHERESHRINKING_HPP
