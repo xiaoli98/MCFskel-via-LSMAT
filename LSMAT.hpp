@@ -82,7 +82,7 @@ private:
     vector<Sphere3d> spheres;
     vector<Sphere3d> spheres_old;
     double sigma = 0;
-    double omega_1 = 0.1;     //modifying one will update the other omega_*
+    double omega_1 = 0.01;     //modifying one will update the other omega_*
     double omega_2 = omega_1 / (0.007 * sigma + 0.02);
     double epsilon = 0.01;
     double h_blend = 0.74 * sigma + 0.49;
@@ -110,11 +110,22 @@ private:
         return x * a + (1 - x) * b;
     }
     double e_medial(Sphere3d s, Sphere3d s_old){
-        return omega_1*e_maximal(s, s_old) + omega_2*e_inscribed(s, s_old);
+        double _e_maximal = e_maximal(s, s_old);
+        double _e_inscribed = e_inscribed(s, s_old);
+#if DEBUG
+        cout <<"%%%%%%%%%%%%%% E_MEDIAL %%%%%%%%%%%%%%"<<endl;
+        cout << "%\tomega_1: "<<omega_1<<endl;
+        cout << "%\tomega_2: "<<omega_2<<endl;
+        cout << "%\te_maximal: " << _e_maximal<<endl;
+        cout << "%\te_inscribed: " << _e_inscribed<<endl;
+        cout <<"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"<<endl;
+#endif
+        double result = omega_1*_e_maximal + omega_2*_e_inscribed;
+        return result;
     }
     double e_maximal(Sphere3d s, Sphere3d s_old){
         double energy = s.Radius() - (s_old.Radius() + epsilon);
-        return sqrt(energy);
+        return sqrt(pow(energy, 2));
     }
     double e_inscribed(Sphere3d s, Sphere3d s_old){
         double sum = 0;
@@ -126,16 +137,44 @@ private:
         }
         return sum;
     }
-    Eigen::VectorXd grad_e_inscribed(Sphere3d s, Sphere3d s_old, Eigen::VectorXd grad_phi_plane, Eigen::VectorXd grad_phi_point){
+    Eigen::VectorXd grad_e_inscribed(Sphere3d s, Sphere3d s_old){
         Eigen::Vector4d gradient;
         double _ramp, _phi1, _phi2;
         Point3d projection;
+
+        double distancePC;
         for(int i = 0; i < point_list.size(); i++){
             _ramp = ramp(Distance(s_old.Center(), point_list[i]) - s_old.Radius());
             _phi1 = phi(_ramp, h_support);
             projection = projection_c(s_old.Center(), point_list[i], normal_list[i]);
             _phi2 = phi(projection, h_blend);
-            gradient += _phi1 * 2 * _phi2 * grad_phi_plane + (1 - _phi2) * grad_phi_point;
+
+            // TODO
+            // gradienti di phi_plane e phi_point deve essere calcolato all'interno di grad_e_inscribed
+            // viene sommato se e solo se e' maggiore di zero la phi_plane e phi_point
+            Eigen::Vector4d gradient_phi_plane;
+            if(phi_plane(s, point_list[i], normal_list[i]) > 0){
+                gradient_phi_plane << 2*(-normal_list[i].X())*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i]))),
+                        2*(-normal_list[i].Y())*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i]))),
+                        2*(-normal_list[i].Z())*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i]))),
+                        2*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i])));
+            }
+            else{
+                gradient_phi_plane << 0, 0, 0, 0;
+            }
+            distancePC = point_list[i].operator-(s.Center()).Norm();
+            Eigen::Vector4d gradient_phi_point;
+            if(phi_point(s, point_list[i]) > 0 ){
+                gradient_phi_point <<   2*((point_list[i].X()-s.Center().X())/distancePC)*(s.Radius() - distancePC),
+                        2*((point_list[i].Y()-s.Center().Y())/distancePC)*(s.Radius() - distancePC),
+                        2*((point_list[i].Z()-s.Center().Z())/distancePC)*(s.Radius() - distancePC),
+                        2*(s.Radius() - distancePC);
+            }
+            else{
+                gradient_phi_point << 0, 0, 0, 0;
+            }
+
+            gradient += _phi1 * 2 * _phi2 * gradient_phi_plane + (1 - _phi2) * gradient_phi_point;
         }
         return gradient;
     }
@@ -290,33 +329,8 @@ public:
 
         Eigen::Vector4d X_n (s.Center().X(), s.Center().Y(), s.Center().Z(), s.Radius());
 
-        // TODO
-        // gradienti di phi_plane e phi_point deve essere calcolato all'interno di grad_e_inscribed
-        // viene sommato se e solo se e' maggiore di zero la phi_plane e phi_point
-        Eigen::Vector4d gradient_phi_plane;
-        if(phi_plane(s, p, n) > 0){
-            gradient_phi_plane <<   2*(-n.X())*(s.Radius()-(p.operator-(s.Center()).dot(n))),
-                                    2*(-n.Y())*(s.Radius()-(p.operator-(s.Center()).dot(n))),
-                                    2*(-n.Z())*(s.Radius()-(p.operator-(s.Center()).dot(n))),
-                                    2*(s.Radius()-(p.operator-(s.Center()).dot(n)));
-        }
-        else{
-            gradient_phi_plane << 0, 0, 0, 0;
-        }
-        double distancePC = p.operator-(s.Center()).Norm();
-        Eigen::Vector4d gradient_phi_point;
-        if(phi_point(s, p) > 0 ){
-            gradient_phi_point <<   2*((p.X()-s.Center().X())/distancePC)*(s.Radius() - distancePC),
-                                    2*((p.Y()-s.Center().Y())/distancePC)*(s.Radius() - distancePC),
-                                    2*((p.Z()-s.Center().Z())/distancePC)*(s.Radius() - distancePC),
-                                    2*(s.Radius() - distancePC);
-        }
-        else{
-            gradient_phi_point << 0, 0, 0, 0;
-        }
-
         //gradient phi_blend_square
-        Eigen::Vector4d gradient_e_inscribed = grad_e_inscribed(s, s_old, gradient_phi_plane, gradient_phi_point);
+        Eigen::Vector4d gradient_e_inscribed = grad_e_inscribed(s, s_old);
 
         Eigen::Vector4d gradient_maximal(0,0,0,2*(s.Radius()-s_old.Radius()-epsilon));
 
@@ -336,11 +350,11 @@ public:
         Eigen::Vector4d vec = matrix.inverse() * jacobian;
 #if DEBUG
         cout << "X_n: "<<endl << X_n<<endl;
-        cout << "phi_plane: " << phi_plane(s, p, n)<<endl;
-        cout << "gradient_phi_plane: " <<endl<< gradient_phi_plane<<endl;
-        cout << "distance PC: " << distancePC<<endl;
-        cout << "phi_point: " << phi_point(s, p)<<endl;
-        cout << "gradient_phi_point: " <<endl<< gradient_phi_point<<endl;
+//        cout << "phi_plane: " << phi_plane(s, p, n)<<endl;
+//        cout << "gradient_phi_plane: " <<endl<< gradient_phi_plane<<endl;
+//        cout << "distance PC: " << distancePC<<endl;
+//        cout << "phi_point: " << phi_point(s, p)<<endl;
+//        cout << "gradient_phi_point: " <<endl<< gradient_phi_point<<endl;
         cout << "gradient_e_inscribed: "<< endl << gradient_e_inscribed<<endl;
         cout << "gradient_maximal: " <<endl<< gradient_maximal<<endl;
         cout << "distance CP: " << distanceCP<<endl;
@@ -369,9 +383,10 @@ public:
 //        cout << "sphere_old center: ";
 //        PRINTP(s_old.Center());
 //        cout <<"sphere_old radius: "<<s_old.Radius()<<endl;
-
+        cout << "energy: "<<energy<<endl;
+        cout <<"residual: " << residual<<endl;
+        cout << "vec = "<<endl<<vec<<endl;
         cout <<"X_n - vec = "<< endl<<X_n - vec<<endl;
-        cout << "eneegy: "<<energy<<endl;
         cout <<"residual: "<<residual<<endl;
 
 #endif
