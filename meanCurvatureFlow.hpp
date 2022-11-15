@@ -11,10 +11,10 @@
 
 class MeanCurvatureFlow{
 private:
-    MyMesh m;
+    MyMesh *m;
 public:
-    MeanCurvatureFlow(){
-        VolumeOfMesh(m)
+    MeanCurvatureFlow(MyMesh *m){
+        this->m = m;
     }
     double SignedVolumeOfTriangle(Point3d p1, Point3d p2, Point3d p3){
         double v321 = p3.X()*p2.Y()*p1.Z();
@@ -26,16 +26,27 @@ public:
         return (1.0f/6.0f)*(-v321 + v231 + v312 - v132 - v213 + v123);
     }
 
-    double VolumeOfMesh(MyMesh m){
+    double VolumeOfMesh(MyMesh *m){
         double sum = 0;
-        for(auto f = m.face.begin(); f < m.face.end(); f++){
+        for(auto f = m->face.begin(); f < m->face.end(); f++){
             sum += abs(SignedVolumeOfTriangle(f->V(0)->P(),f->V(1)->P(),f->V(2)->P()));
         }
     }
 
     void compute_skel(){
+        SphereShrinking ss = SphereShrinking(m);
+        ss.compute_ma_point();
+        vector<Sphere3d> medial = ss.getMedialSpheres();
+
+        //iterate until the volume get enough small
+        //  update laplacian and weights
+        //  perform mesh contraction
+        //  update connectivity
+        //  collapse the shortest edges
 
     }
+
+
 
 };
 #endif //MCF_SKET_MEANCURVATUREFLOW_HPP

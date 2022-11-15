@@ -50,10 +50,12 @@ public:
 //        cout <<"offset:" <<offset<<endl;
         for(int i = 0; i < m->VN(); i++){
 //            r = ((double) rand() / (RAND_MAX)) + 1;
-            center = point_list[i].operator-(normal_list[i].operator*(m->bbox.Diag()/2));
-            this->spheres.emplace_back(Sphere3d(center, (m->bbox.Diag()/2)));
+            r = m->bbox.Diag()/10;
+            center = point_list[i].operator-(normal_list[i].operator*(r));
+            this->spheres.emplace_back(Sphere3d(center, (r)));
             if(i == 0){
-                add_octahedron(*m, center, (m->bbox.Diag()/2), "initial_sphere.off");
+                add_octahedron(*m, center, (r), "initial_sphere.off");
+//                add_sphere(*m, center, r);
             }
         }
         this->spheres_old = vector<Sphere3d>(m->VN(), Sphere3d(Point3d(0,0,0), m->bbox.Diag()));
@@ -82,7 +84,7 @@ private:
     vector<Sphere3d> spheres;
     vector<Sphere3d> spheres_old;
     double sigma = 0;
-    double omega_1 = 0.01;     //modifying one will update the other omega_*
+    double omega_1 = 0.001;     //modifying one will update the other omega_*
     double omega_2 = omega_1 / (0.007 * sigma + 0.02);
     double epsilon = 0.01;
     double h_blend = 0.74 * sigma + 0.49;
@@ -149,11 +151,9 @@ private:
             projection = projection_c(s_old.Center(), point_list[i], normal_list[i]);
             _phi2 = phi(projection, h_blend);
 
-            // TODO
-            // gradienti di phi_plane e phi_point deve essere calcolato all'interno di grad_e_inscribed
-            // viene sommato se e solo se e' maggiore di zero la phi_plane e phi_point
             Eigen::Vector4d gradient_phi_plane;
-            if(phi_plane(s, point_list[i], normal_list[i]) > 0){
+            double _phi_plane = phi_plane(s, point_list[i], normal_list[i]);
+            if(_phi_plane > 0){
                 gradient_phi_plane << 2*(-normal_list[i].X())*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i]))),
                         2*(-normal_list[i].Y())*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i]))),
                         2*(-normal_list[i].Z())*(s.Radius()-(point_list[i].operator-(s.Center()).dot(normal_list[i]))),
@@ -164,7 +164,8 @@ private:
             }
             distancePC = point_list[i].operator-(s.Center()).Norm();
             Eigen::Vector4d gradient_phi_point;
-            if(phi_point(s, point_list[i]) > 0 ){
+            double _phi_point = phi_point(s, point_list[i]);
+            if(_phi_point > 0 ){
                 gradient_phi_point <<   2*((point_list[i].X()-s.Center().X())/distancePC)*(s.Radius() - distancePC),
                         2*((point_list[i].Y()-s.Center().Y())/distancePC)*(s.Radius() - distancePC),
                         2*((point_list[i].Z()-s.Center().Z())/distancePC)*(s.Radius() - distancePC),
@@ -173,8 +174,7 @@ private:
             else{
                 gradient_phi_point << 0, 0, 0, 0;
             }
-
-            gradient += _phi1 * 2 * _phi2 * gradient_phi_plane + (1 - _phi2) * gradient_phi_point;
+            gradient  += 2* ( (_phi2-1) * _phi_point * gradient_phi_point - _phi2 * _phi_plane * gradient_phi_plane);
         }
         return gradient;
     }
@@ -194,8 +194,6 @@ private:
     }
 
     double phi_blend_square(Sphere3d s, Sphere3d s_old, Point3d p, Point3d n, Point3d projection){
-        //c^(t-1) - n(c^(t-1)-p) * n
-//        Point3d projection = s_old.Center().operator-(n.operator*(s_old.Center().operator-(p).operator*(n)));
         return mix(pow(phi_plane(s, p, n),2), pow(phi_point(s, p),2), phi( projection.operator-(p), h_blend));
     }
 
@@ -334,9 +332,9 @@ public:
 
         Eigen::Vector4d gradient_maximal(0,0,0,2*(s.Radius()-s_old.Radius()-epsilon));
 
-        double distanceCP = s.Center().operator-(p).Norm();
+        double distanceCP = Distance(s.Center(), p);
         Eigen::Vector4d gradient_pinning;
-        if(e_pinning(s, p)){
+        if(e_pinning(s, p) > 0){
             gradient_pinning << 2*((s.Center().X()-p.X())/distanceCP) * (distanceCP - s.Radius() - d_in),
                                 2*((s.Center().Y()-p.Y())/distanceCP) * (distanceCP - s.Radius() - d_in),
                                 2*((s.Center().Z()-p.Z())/distanceCP) * (distanceCP - s.Radius() - d_in),
@@ -345,7 +343,7 @@ public:
         else{
             gradient_pinning << 0, 0, 0, 0;
         }
-        Eigen::Vector4d jacobian = gradient_maximal+gradient_e_inscribed+gradient_pinning;
+        Eigen::Vector4d jacobian = omega_1 * gradient_maximal + omega_2 * gradient_e_inscribed + gradient_pinning;
         Eigen::Matrix<double, 4, 4> matrix = jacobian * jacobian.transpose();
         Eigen::Vector4d vec = matrix.inverse() * jacobian;
 #if DEBUG
@@ -365,6 +363,10 @@ public:
         cout << "(J^T J)^-1"<<endl<<matrix.inverse()<<endl;
         cout << "(J^T J)^-1 J^T " << endl<<vec<<endl;
 #endif
+
+        // TODO
+        // entries of Jacobian are the partial derivative of the residual on s
+        // the problem should be linearized, but how?
         s_old = s;
         s.Center() = Point3d(vec[0], vec[1], vec[2]);
         s.Radius() = vec[3];
