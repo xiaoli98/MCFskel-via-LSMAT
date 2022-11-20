@@ -14,6 +14,7 @@
 #include "sphereShrinking.hpp"
 #include "LSMAT.hpp"
 #include "utils.hpp"
+#include <vcg/space/index/kdtree/kdtree.h>
 
 using namespace vcg;
 using namespace std;
@@ -356,7 +357,9 @@ int main(int argc, char* argv[]){
     //  mappare le sfere con i colori
 
 #if SPHERE_SHRINK
-    SphereShrinking ss = SphereShrinking(&m);
+    VertexConstDataWrapper<MyMesh> ww(m);
+    KdTree<float> tree(ww);
+    SphereShrinking ss = SphereShrinking(&m, tree);
     ss.compute_ma_point();
     vector<Sphere3d> medial = ss.getMedialSpheres();
 #if DEBUG

@@ -8,7 +8,7 @@
 
 #include <cmath>
 #include <iostream>
-#include <stdlib.h>
+#include <cstdlib>
 #include <random>
 #include <string>
 
@@ -26,6 +26,8 @@ private:
 
     vector<Sphere3d> medial_spheres;
 
+    KdTree<float> kdtree;
+
     MyMesh *m;
 public:
     const vector<Sphere3d> &getMedialSpheres() const {
@@ -37,7 +39,7 @@ public:
     }
 
 public:
-    SphereShrinking(MyMesh* m){
+    SphereShrinking(MyMesh *m, KdTree<float> kdtree) : kdtree(kdtree) {
         this->m = m;
         tri::UpdateBounding<MyMesh>::Box(*m);
         tri::RequirePerVertexNormal(*m);
@@ -82,6 +84,22 @@ public:
         return min_dist_point;
     }
 
+    /// calculate the knn using kd-tree
+    /// \param c the point which to find the neighbor
+    /// \param p the one outside the set
+    /// \return the nearest point to c
+    Point3d nearestNeighbor_kdtree(Point3d c, Point3d p){
+        unsigned int idx;
+        float dist;
+        KdTree<float>::PriorityQueue queue;
+        this->kdtree.doQueryK(c, 2, queue);
+        for(int i = 0; i < queue.getNofElements(); i++){
+            int idx = queue.getIndex(i);
+            if(point_list[idx].operator!=(p))
+                return point_list[idx];
+        }
+    }
+
     void compute_ma_point(){
         Point3d p;
         Point3d n;
@@ -103,30 +121,31 @@ public:
 
             radius_init = compute_radius(p, n,p_tilde);
             radius_new = radius_init;
-#if DEBUG
-            cout << "initial radius:" <<radius_init<<endl;
-#endif
+//#if DEBUG
+//            cout << "initial radius:" <<radius_init<<endl;
+//#endif
             int z = 0;
             while(true){
                 radius = radius_new;
                 c = p.operator-(n.operator*(radius));
-                p_tilde = nearestNeighbor(c, p);
+                p_tilde = nearestNeighbor_kdtree(c, p);
                 radius_new = compute_radius(p, n,p_tilde);
 #if DEBUG
                 if(i == 0)
-                    add_octahedron(*m, c, radius_new, "SS_"+ to_string(z++)+".off");
+//                    add_octahedron(*m, c, radius_new, "SS_"+ to_string(z++)+".off");
+                    add_sphere(*m, c, radius_new);
 #endif
                 if(radius - radius_new < 0.0001)
                     break;
             };
-#if DEBUG
-            MyMesh m1;
+//#if DEBUG
+//            MyMesh m1;
 //            add_sphere(m1, c, radius_new, Color4b::Red);
 //            tri::Sphere(m1);
 //            tri::Append<MyMesh, MyMesh>::Mesh(m1, *m);
 //            string filename = "sphere_of_" + to_string(i) + ".off";
 //            tri::io::ExporterOFF<MyMesh>::Save(m1, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
-#endif
+//#endif
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
     }
