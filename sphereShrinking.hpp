@@ -82,7 +82,6 @@ public:
                 min_dist_point = *point;
             }
         }
-
         return min_dist_point;
     }
 
@@ -130,9 +129,7 @@ public:
 
             radius_init = compute_radius(p, n,p_tilde);
             radius_new = radius_init;
-//#if DEBUG
-//            cout << "initial radius:" <<radius_init<<endl;
-//#endif
+
             int z = 0;
             while(true){
                 radius = radius_new;
@@ -146,14 +143,6 @@ public:
                     break;
                 }
             };
-//#if DEBUG
-//            MyMesh m1;
-//            add_sphere(m1, c, radius_new, Color4b::Red);
-//            tri::Sphere(m1);
-//            tri::Append<MyMesh, MyMesh>::Mesh(m1, *m);
-//            string filename = "sphere_of_" + to_string(i) + ".off";
-//            tri::io::ExporterOFF<MyMesh>::Save(m1, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
-//#endif
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
 #if DEBUG
