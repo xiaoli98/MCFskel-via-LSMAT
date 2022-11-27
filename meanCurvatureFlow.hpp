@@ -12,6 +12,7 @@
 class MeanCurvatureFlow{
 private:
     MyMesh *m;
+
 public:
     MeanCurvatureFlow(MyMesh *m){
         this->m = m;
@@ -34,17 +35,29 @@ public:
     }
 
     void compute_skel(){
-        SphereShrinking ss = SphereShrinking(m);
+        VertexConstDataWrapper<MyMesh> ww(*m);
+        KdTree<float> tree(ww);
+        SphereShrinking ss = SphereShrinking(m, tree);
         ss.compute_ma_point();
         vector<Sphere3d> medial = ss.getMedialSpheres();
 
-        //iterate until the volume get enough small
-        //  update laplacian and weights
-        //  perform mesh contraction
-        //  update connectivity
-        //  collapse the shortest edges
-
+        MyMesh *mesoSkel;
+        while(true) {
+            if (VolumeOfMesh(mesoSkel) > 1) {
+                //  update laplacian and weights
+                    //v^{t+1}_i = v^t_i + h * Delta(v^t_i)
+                        //Delta(v^t_i) = -d * H(v)_p * n(p) - H(p)* \hat(D)_v * n_p
+                    // solve Eq. 4
+                    // which minimize E = norm(LV^{t+1})^2 + w^2_H * \sum_i(norm(v^{t+1}_i - v^t_i)^2)
+                            // or better E = E_smooth + E_velocity + E_medial
+                            //
+                //  perform mesh contraction
+                //  update connectivity
+                //  collapse the shortest edges
+            }
+        }
     }
+
 
 
 

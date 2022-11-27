@@ -126,13 +126,12 @@ void add_sphere(MeshType &m, Point3d center, double radius) {
 
     MeshType newMesh;
 
-    tri::Sphere(newMesh);
+    tri::Sphere(newMesh,2);
     double scale_factor = radius;
-    tri::UpdatePosition<MyMesh>::Translate(newMesh, center);
-
     tri::UpdatePosition<MyMesh>::Scale(newMesh, scale_factor);
+    tri::UpdatePosition<MyMesh>::Translate(newMesh, center);
     tri::Append<MeshType,MeshType>::Mesh(m, newMesh);
-    tri::io::ExporterOFF<MyMesh>::Save(m, "add_sphere_out.off", tri::io::Mask::IOM_FACECOLOR);
+//    tri::io::ExporterOFF<MyMesh>::Save(m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
 }
 #endif //MY_MESH_STRUCTURE
 

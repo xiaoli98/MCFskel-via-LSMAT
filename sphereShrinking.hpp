@@ -28,6 +28,8 @@ private:
 
     KdTree<float> kdtree;
 
+    float threshold = 0.00001;
+
     MyMesh *m;
 public:
     const vector<Sphere3d> &getMedialSpheres() const {
@@ -108,11 +110,18 @@ public:
         double radius_new;
         double radius_init;
         Point3d c;
-
+        MyMesh sphere_approx;
         for(int i = 0; i < point_list.size(); i++){
+#if DEBUG
             cout<<"Point "<<i<<endl;
+#endif
             p = point_list[i];
             n = normal_list[i];
+#if DEBUG
+            //bunny high res has a normal which is <0 0 0>
+            cout <<"normal: ";
+            PRINTP(n)
+#endif
 
             //could be improved
             //the original paper says to use the last p_tilde,
@@ -130,13 +139,12 @@ public:
                 c = p.operator-(n.operator*(radius));
                 p_tilde = nearestNeighbor_kdtree(c, p);
                 radius_new = compute_radius(p, n,p_tilde);
+                if(radius - radius_new < threshold){
 #if DEBUG
-                if(i == 0)
-//                    add_octahedron(*m, c, radius_new, "SS_"+ to_string(z++)+".off");
-                    add_sphere(*m, c, radius_new);
+                    add_sphere(sphere_approx, c, radius_new);
 #endif
-                if(radius - radius_new < 0.0001)
                     break;
+                }
             };
 //#if DEBUG
 //            MyMesh m1;
@@ -148,6 +156,9 @@ public:
 //#endif
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
+#if DEBUG
+        tri::io::ExporterOFF<MyMesh>::Save(sphere_approx, "medial_spheres_approx.off", tri::io::Mask::IOM_FACECOLOR);
+#endif
     }
 
 };
