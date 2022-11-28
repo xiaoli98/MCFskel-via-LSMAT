@@ -15,23 +15,35 @@ private:
     MyMesh::VertContainer vert;
     MyMesh::EdgeContainer edges;
 
+    vector<vector<tuple<int, int, double>>> laplacian;
+
+    vector<tuple<int, int, double>> laplacian_weights;
+
+public:
     LaplaceHelper(MyMesh *m){
         this->m = m;
         vert = this->m->vert;
         edges = this->m->edge;
     }
 
-public:
+    const vector<vector<tuple<int, int, double>>> &getLaplacian() const {
+        return laplacian;
+    }
+
+    const vector<tuple<int, int, double>> &getLaplacianWeights() const {
+        return laplacian_weights;
+    }
+
     double compute_area(Point3d p, Point3d q, Point3d r, double angle){
         double pq = Distance(p, q);
         double pr = Distance(p, r);
         return 0.5 * pq * pr * sin(angle);
     }
 
-    vector<vector<tuple<int, int, double>>> get_vertex_laplace(){
+    void compute_laplace(){
         int n_vert = vert.size();
-        vector<vector<tuple<int, int, double>>> edge_weights;
-        edge_weights.resize(n_vert);
+        laplacian.resize(n_vert);
+        laplacian_weights.resize(n_vert);
         int vert_idx;
         MyMesh::VertexIterator vi;
         for(vi = vert.begin(), vert_idx = 0; vi != vert.end(); vi++, vert_idx++)
@@ -76,22 +88,21 @@ public:
                 sincos(beta, &sin_beta, &cos_beta);
                 p.FlipV();
                 cot_beta = sin_beta/cos_beta;
-                w = cot_alpha + cot_beta;
+                w = (cot_alpha + cot_beta) * 0.5;
 
                 area = compute_area(P, Q, R, angle);
                 sum += w;
                 sum_area += area;
                 //inserting <i, j, w>
-                edge_weights[vert_idx].emplace_back(tuple<int, int, double>(vert_idx, edge_idx, w));
+                laplacian[vert_idx].emplace_back(tuple<int, int, double>(vert_idx, edge_idx, w));
 
                 //NEXT EDGE becomes CURRENT EDGE
                 p.FlipE();
             }while(p.f!=start);
             //inserting on the diagonal
-            edge_weights[vert_idx].emplace_back(tuple<int, int, double>(vert_idx, vert_idx, -sum * sum_area/3));
+            laplacian[vert_idx].emplace_back(tuple<int, int, double>(vert_idx, vert_idx, -sum));
+            laplacian_weights[vert_idx] = tuple<int, int, double> (vert_idx, vert_idx, 1 / (sum_area / 3));
         }
-        return edge_weights;
-
     }
 };
 #endif //MCF_SKET_LAPLACEHELPER_HPP
