@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.23)
-project(MCF_sket)
+project(MCFsket)
 
 include_directories("/home/boy/3D/vcglib")
 include_directories("/home/boy/3D/vcglib/eigenlib")
@@ -21,5 +21,5 @@ add_dependencies(libqhullcpp qhull)
 LINK_DIRECTORIES(/home/boy/3D/qhull/build)
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(MCF_sket main.cpp LSMAT.hpp sphereShrinking.hpp utils.hpp meanCurvatureFlow.hpp LaplaceHelper.hpp)
+add_executable(MCFsket main.cpp LSMAT.hpp sphereShrinking.hpp utils.hpp meanCurvatureFlow.hpp LaplaceHelper.hpp Collapser.h)
 target_link_libraries(${PROJECT_NAME} libqhullstatic_r libqhullcpp)

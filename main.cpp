@@ -11,6 +11,7 @@
 #include "QhullVertex.h"
 #include "Qhull.h"
 
+#include "meanCurvatureFlow.hpp"
 #include "sphereShrinking.hpp"
 #include "LSMAT.hpp"
 #include "utils.hpp"
@@ -337,6 +338,7 @@ int main(int argc, char* argv[]){
     tri::io::ImporterOFF<MyMesh>::Open(m,argv[1]);
     tri::UpdateBounding<MyMesh>::Box(m);
     tri::RequirePerVertexNormal(m);
+    tri::RequireVFAdjacency(m);
     tri::UpdateNormal<MyMesh>::PerVertexNormalized(m);
 
 #if LS_MAT
@@ -375,6 +377,11 @@ int main(int argc, char* argv[]){
     }
     string outFileName = strcat(basename(argv[1]), "_SS.off") ;
     tri::io::ExporterOFF<MyMesh>::Save(m, outFileName.c_str(), tri::io::Mask::IOM_FACECOLOR);
+#endif
+
+#if MCF
+    MeanCurvatureFlow mcf(&m);
+    mcf.compute_skel();
 #endif
 }
 

@@ -5,7 +5,7 @@
 #ifndef MCF_SKET_SPHERESHRINKING_HPP
 #define MCF_SKET_SPHERESHRINKING_HPP
 
-
+#define DEBUG_SS 0
 #include <cmath>
 #include <iostream>
 #include <cstdlib>
@@ -111,12 +111,12 @@ public:
         Point3d c;
         MyMesh sphere_approx;
         for(int i = 0; i < point_list.size(); i++){
-#if DEBUG
+#if DEBUG_SS
             cout<<"Point "<<i<<endl;
 #endif
             p = point_list[i];
             n = normal_list[i];
-#if DEBUG
+#if DEBUG_SS
             //bunny high res has a normal which is <0 0 0>
             cout <<"normal: ";
             PRINTP(n)
@@ -137,7 +137,7 @@ public:
                 p_tilde = nearestNeighbor_kdtree(c, p);
                 radius_new = compute_radius(p, n,p_tilde);
                 if(radius - radius_new < threshold){
-#if DEBUG
+#if DEBUG_SS
                     add_sphere(sphere_approx, c, radius_new);
 #endif
                     break;
@@ -145,7 +145,7 @@ public:
             };
             medial_spheres.emplace_back(Sphere3d(c, radius));
         }
-#if DEBUG
+#if DEBUG_SS
         tri::io::ExporterOFF<MyMesh>::Save(sphere_approx, "medial_spheres_approx.off", tri::io::Mask::IOM_FACECOLOR);
 #endif
     }

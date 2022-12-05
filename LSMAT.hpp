@@ -4,6 +4,8 @@
 #ifndef LSMAT_HPP
 #define LSMAT_HPP
 
+#define DEBUG_LSMAT 0
+
 #include <cmath>
 #include <iostream>
 #include <stdlib.h>
@@ -54,12 +56,11 @@ public:
             center = point_list[i].operator-(normal_list[i].operator*(r));
             this->spheres.emplace_back(Sphere3d(center, (r)));
             if(i == 0){
-                add_octahedron(*m, center, (r), "initial_sphere.off");
 //                add_sphere(*m, center, r);
             }
         }
         this->spheres_old = vector<Sphere3d>(m->VN(), Sphere3d(Point3d(0,0,0), m->bbox.Diag()));
-#if DEBUG
+#if DEBUG_LSMAT
         cout << "***********INITIAL POINT_LIST**********"<<endl;
         for(auto & i : point_list){
             PRINTP(i)
@@ -114,7 +115,7 @@ private:
     double e_medial(Sphere3d s, Sphere3d s_old){
         double _e_maximal = e_maximal(s, s_old);
         double _e_inscribed = e_inscribed(s, s_old);
-#if DEBUG
+#if DEBUG_LSMAT
         cout <<"%%%%%%%%%%%%%% E_MEDIAL %%%%%%%%%%%%%%"<<endl;
         cout << "%\tomega_1: "<<omega_1<<endl;
         cout << "%\tomega_2: "<<omega_2<<endl;
@@ -278,7 +279,7 @@ public:
 
         for(int i = 0; i<point_list.size(); i++){
             while(j++ < n_runs || residual > threshold){
-#if DEBUG
+#if DEBUG_LSMAT
                 cout << "################# POINT "<<i<<" #################"<<endl;
 #endif
                 tuple<Eigen::VectorXd, double, double> t = gauss_newton(point_list[i], normal_list[i], spheres[i], spheres_old[i], energy_old);
@@ -292,14 +293,14 @@ public:
                 newPoint.Z() = vec[2];
                 newSphere.Center() = newPoint;
                 newSphere.Radius() = vec[3];
-#if DEBUG
+#if DEBUG_LSMAT
 //                this->m->vert[i].C() = Color4b::Red;
 //                tri::Allocator<MyMesh>::AddVertex(*m, newSphere.Center(), Color4b::Red);
 //                tri::Allocator<MyMesh>::AddFace(*m, m->vert[i].P(), spheres[i].Center(), spheres_old[i].Center());
 //                tri::Append<MyMesh,MyMesh>::Mesh(*m, *uniform_sphere_points(newSphere.Center(), newSphere.Radius()));
                 string filename = "LSMAT_it_" + to_string(j) + "_point_" + to_string(i)+".off";
 //                add_octahedron(*m, spheres[i].Center(), spheres[i].Radius(), filename);
-                add_octahedron(*m, newSphere.Center(), newSphere.Radius(),filename);
+//                add_octahedron(*m, newSphere.Center(), newSphere.Radius(),filename);
 //                tri::io::ExporterOFF<MyMesh>::Save(*m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
                 cin.get();
 #endif
@@ -346,7 +347,7 @@ public:
         Eigen::Vector4d jacobian = omega_1 * gradient_maximal + omega_2 * gradient_e_inscribed + gradient_pinning;
         Eigen::Matrix<double, 4, 4> matrix = jacobian * jacobian.transpose();
         Eigen::Vector4d vec = matrix.inverse() * jacobian;
-#if DEBUG
+#if DEBUG_LSMAT
         cout << "X_n: "<<endl << X_n<<endl;
 //        cout << "phi_plane: " << phi_plane(s, p, n)<<endl;
 //        cout << "gradient_phi_plane: " <<endl<< gradient_phi_plane<<endl;
@@ -374,7 +375,7 @@ public:
         double residual = energy;
 
         vec = vec * residual;
-#if DEBUG
+#if DEBUG_LSMAT
 //        cout << "p: ";
 //        PRINTP(p)
 //        cout << "n: ";

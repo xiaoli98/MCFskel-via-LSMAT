@@ -6,6 +6,7 @@
 #define MCF_SKET_MEANCURVATUREFLOW_HPP
 
 #include "LSMAT.hpp"
+#include "LaplaceHelper.hpp"
 #include "sphereShrinking.hpp"
 #include "utils.hpp"
 
@@ -32,6 +33,7 @@ public:
         for(auto f = m->face.begin(); f < m->face.end(); f++){
             sum += abs(SignedVolumeOfTriangle(f->V(0)->P(),f->V(1)->P(),f->V(2)->P()));
         }
+        return sum;
     }
 
     void compute_skel(){
@@ -40,10 +42,11 @@ public:
         SphereShrinking ss = SphereShrinking(m, tree);
         ss.compute_ma_point();
         vector<Sphere3d> medial = ss.getMedialSpheres();
-
+        cout << "SS done"<<endl;
         MyMesh *mesoSkel;
+        LaplaceHelper laplaceHelper(m);
         while(true) {
-            if (VolumeOfMesh(mesoSkel) > 1) {
+//            if (VolumeOfMesh(mesoSkel) > 1) {
                 //  update laplacian and weights
                     //v^{t+1}_i = v^t_i + h * Delta(v^t_i)
                         //Delta(v^t_i) = -d * H(v)_p * n(p) - H(p)* \hat(D)_v * n_p
@@ -51,10 +54,13 @@ public:
                     // which minimize E = norm(LV^{t+1})^2 + w^2_H * \sum_i(norm(v^{t+1}_i - v^t_i)^2)
                             // or better E = E_smooth + E_velocity + E_medial
                             //
+                laplaceHelper.compute_laplace();
+                laplaceHelper.print_lapacian();
+                cin.get();
                 //  perform mesh contraction
                 //  update connectivity
                 //  collapse the shortest edges
-            }
+//            }
         }
     }
 
