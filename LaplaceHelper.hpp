@@ -18,17 +18,14 @@ private:
     MyMesh::FaceContainer *faces;
     vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian;
     vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian_weights;
-    unordered_map<MyMesh::VertexType* ,int> map_vert_idx;
+
+    MyMesh::PerVertexAttributeHandle<int> vert_idx;
 public:
     LaplaceHelper(MyMesh *m){
         this->m = m;
         vert = &this->m->vert;
         faces = &this->m->face;
-        map_vert_idx.reserve(vert->size());
-        int i = 0;
-        for (auto vit = vert->begin(); vit != vert->end(); vit++){
-            map_vert_idx.insert(make_pair(&*vit, i++));
-        }
+        vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
     }
 
     const vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> &getLaplacian() const {
@@ -38,10 +35,6 @@ public:
     const vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> &getLaplacianWeights() const {
         return laplacian_weights;
     }
-
-    const unordered_map<MyMesh::VertexType*, int> &get_map_vert_idx() const{
-        return map_vert_idx;
-    };
 
     double compute_area(Point3d p, Point3d q, Point3d r, double angle){
         double pq = Distance(p, q);
@@ -91,7 +84,7 @@ public:
                 p.FlipV();
                 alpha = p.AngleRad();
                 sincos(alpha, &sin_alpha, &cos_alpha);
-                cot_alpha = sin_alpha / cos_alpha;
+                cot_alpha = cos_alpha / sin_alpha;
                 Q = p.V()->P();
                 p.FlipV();//return to the original vert
 
@@ -113,7 +106,7 @@ public:
                 beta = p.AngleRad();
                 sincos(beta, &sin_beta, &cos_beta);
                 p.FlipV();
-                cot_beta = sin_beta / cos_beta;
+                cot_beta = cos_beta / sin_beta;
                 w = (cot_alpha + cot_beta) * 0.5;
 
                 area = compute_area(P, Q, R, angle);
@@ -133,7 +126,7 @@ public:
     void print_lapacian(){
         cout << "laplacian size:"<<laplacian.size() <<endl;
         for(auto item = laplacian.begin(); item != laplacian.end(); item++){
-            printf("row: %d col:%d value:%f\n", map_vert_idx[get<0>(*item)], map_vert_idx[get<1>(*item)], get<2>(*item));
+            printf("row: %d col:%d value:%f\n", vert_idx[get<0>(*item)], vert_idx[get<1>(*item)], get<2>(*item));
         }
     }
 };

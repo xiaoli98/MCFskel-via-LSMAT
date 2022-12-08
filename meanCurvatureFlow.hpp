@@ -11,12 +11,19 @@
 #include "utils.hpp"
 
 class MeanCurvatureFlow{
+    typedef MyMesh::PerVertexAttributeHandle<int> map;
 private:
     MyMesh *m;
-
+    map vert_idx;
 public:
     MeanCurvatureFlow(MyMesh *m){
         this->m = m;
+
+        vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
+        int i = 0;
+        for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++, i++){
+            vert_idx[vi] = i;
+        }
     }
     double SignedVolumeOfTriangle(Point3d p1, Point3d p2, Point3d p3){
         double v321 = p3.X()*p2.Y()*p1.Z();
