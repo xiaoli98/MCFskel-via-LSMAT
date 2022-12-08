@@ -12,14 +12,16 @@
 
 
 class LaplaceHelper{
+    typedef vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian_triple;
 private:
     MyMesh *m;
     MyMesh::VertContainer *vert;
     MyMesh::FaceContainer *faces;
-    vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian;
-    vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian_weights;
+    laplacian_triple laplacian;
+    laplacian_triple laplacian_weights;
 
     MyMesh::PerVertexAttributeHandle<int> vert_idx;
+    MyMesh::PerMeshAttributeHandle<laplacian_triple> laplacian_handle;
 public:
     LaplaceHelper(MyMesh *m){
         this->m = m;
@@ -121,6 +123,8 @@ public:
             laplacian.emplace_back(make_tuple(vert0_p, vert0_p, -sum));
             laplacian_weights.emplace_back(make_tuple(vert0_p, vert0_p, 1 / (sum_area / 3)));
         }
+
+        laplacian_handle = tri::Allocator<MyMesh>::GetPerMeshAttribute<laplacian_triple>(*m, string("laplacian"));
     }
 
     void print_lapacian(){

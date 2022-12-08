@@ -5,6 +5,7 @@
 #ifndef MCF_SKET_MEANCURVATUREFLOW_HPP
 #define MCF_SKET_MEANCURVATUREFLOW_HPP
 
+#include "Collapser.h"
 #include "LSMAT.hpp"
 #include "LaplaceHelper.hpp"
 #include "sphereShrinking.hpp"
@@ -49,25 +50,22 @@ public:
         SphereShrinking ss = SphereShrinking(m, tree);
         ss.compute_ma_point();
         vector<Sphere3d> medial = ss.getMedialSpheres();
+
+        MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> vert_mat = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("vert_mat"));
+
+        int i = 0;
+        for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++, i++){
+            vert_mat[vi] = medial[i].Center();
+        }
+
         cout << "SS done"<<endl;
         MyMesh *mesoSkel;
         LaplaceHelper laplaceHelper(m);
+        Collapser collapser(m);
         while(true) {
-//            if (VolumeOfMesh(mesoSkel) > 1) {
-                //  update laplacian and weights
-                    //v^{t+1}_i = v^t_i + h * Delta(v^t_i)
-                        //Delta(v^t_i) = -d * H(v)_p * n(p) - H(p)* \hat(D)_v * n_p
-                    // solve Eq. 4
-                    // which minimize E = norm(LV^{t+1})^2 + w^2_H * \sum_i(norm(v^{t+1}_i - v^t_i)^2)
-                            // or better E = E_smooth + E_velocity + E_medial
-                            //
-                laplaceHelper.compute_laplace();
-                laplaceHelper.print_lapacian();
-                cin.get();
-                //  perform mesh contraction
-                //  update connectivity
-                //  collapse the shortest edges
-//            }
+            laplaceHelper.compute_laplace();
+            collapser.compute();
+            cin.get();
         }
     }
 
