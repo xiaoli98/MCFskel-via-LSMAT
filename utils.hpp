@@ -9,6 +9,7 @@
 #include <vcg/simplex/vertex/component.h>
 #include <vcg/complex/algorithms/create/platonic.h>
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include<wrap/io_trimesh/import_obj.h>
 #include<wrap/io_trimesh/export_obj.h>
 #include<wrap/io_trimesh/import_off.h>

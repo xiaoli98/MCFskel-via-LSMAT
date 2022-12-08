@@ -14,27 +14,34 @@
 class LaplaceHelper{
 private:
     MyMesh *m;
-    MyMesh::VertContainer vert;
-    MyMesh::EdgeContainer edges;
-
-    vector<vector<tuple<int, int, double>>> laplacian;
-    vector<tuple<int, int, double>> laplacian_weights;
+    MyMesh::VertContainer *vert;
+    MyMesh::FaceContainer *faces;
+    vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian;
+    vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian_weights;
     unordered_map<MyMesh::VertexType* ,int> map_vert_idx;
 public:
     LaplaceHelper(MyMesh *m){
         this->m = m;
-        vert = this->m->vert;
-        edges = this->m->edge;
-
+        vert = &this->m->vert;
+        faces = &this->m->face;
+        map_vert_idx.reserve(vert->size());
+        int i = 0;
+        for (auto vit = vert->begin(); vit != vert->end(); vit++){
+            map_vert_idx.insert(make_pair(&*vit, i++));
+        }
     }
 
-    const vector<vector<tuple<int, int, double>>> &getLaplacian() const {
+    const vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> &getLaplacian() const {
         return laplacian;
     }
 
-    const vector<tuple<int, int, double>> &getLaplacianWeights() const {
+    const vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> &getLaplacianWeights() const {
         return laplacian_weights;
     }
+
+    const unordered_map<MyMesh::VertexType*, int> &get_map_vert_idx() const{
+        return map_vert_idx;
+    };
 
     double compute_area(Point3d p, Point3d q, Point3d r, double angle){
         double pq = Distance(p, q);
@@ -43,121 +50,90 @@ public:
     }
 
     void compute_laplace() {
-        int n_vert = vert.size();
-        laplacian.resize(n_vert);
-        laplacian_weights.resize(n_vert);
-        int vert_idx;
+        int n_vert = vert->size();
+        laplacian.reserve(6 * n_vert);
+        cout << "reserving: "<<6* n_vert<<endl;
+//        laplacian_weights.resize(n_vert);
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
         tri::UpdateTopology<MyMesh>::FaceFace(*m);
         tri::UpdateFlags<MyMesh>::VertexClearV(*m);
 //        MyMesh::VertexIterator vi;
         MyMesh::FaceIterator fi;
-        MyMesh::VertexPointer vp;
         int visited_vert = 0;
 
-        ////creating mapping of vertex and the index
-        //todo
+        ///creating mapping of vertex and the index
+        //todo -> risolto, la copia di vettori e' il male
         //  non ben capito ma i puntatori nei container di vertex sono diversi dai puntatori dei vertici nelle facce
         //  quindi inizializzo la mappa con usando i puntatori dei vertici delle facce
-        int idx = 0;
-        for(fi = m->face.begin(); fi != m->face.end(); fi++){
-            for (int i = 0; i < fi->VN(); i++) {
-                if (! fi->V(i)->IsD() && !fi->V(i)->IsV()) {
-                    fi->V(i)->SetV();
-                    map_vert_idx.insert(make_pair(fi->V(i), idx++));
-                }
-            }
-        }
+        /// TROPPO PYTHON HA ROVINATO LA NUOVA GENERAZIONE
+
+        MyMesh::VertexType *vert0_p, *vert1_p;
 
         tri::UpdateFlags<MyMesh>::VertexClearV(*m);
-        for (fi = m->face.begin(); fi != m->face.end(); fi++) {
-            for (int i = 0; i < fi->VN(); i++) {
-                vp = fi->V(i);
-                if (!vp->IsD() && !vp->IsV()) {
-//                    map_vert_idx.insert(make_pair(vp,idx++));
-//                    cout << "vp:"<<vp<<" ";
-                    PRINTP(vp->P())
-                    visited_vert++;
-                    vp->SetV();
-                    vcg::face::Pos<MyFace> p(fi.base(), i, vp);
-                    double angle_sum = 0;
-                    Point3d p_sum = Point3d(0, 0, 0);
-                    double sin_alpha, cos_alpha, alpha, cot_alpha;
-                    double sin_beta, cos_beta, beta, cot_beta;
-                    double w = 0, sum_area = 0, sum = 0;
-                    //every cycle processes an edge
-                    int edge_idx = 0;
-                    do {
-                        double area = 0, angle;
-                        Point3d P, Q, R; //3 vertices to be save for area computation
-                        P = p.V()->P();
-                        vert_idx = map_vert_idx[p.V()];
-//                        cout << "vert_idx: "<<vert_idx<<endl;
-//                        cout << "BEFORE FlipV: "<< p.V()<<endl;
-                        //IN THE PREV EDGE
-                        //go to the opposite vert on the same edge
-                        p.FlipV();
-//                        cout << "AFTER FlipV: "<< p.V()<<endl;
-                        alpha = p.AngleRad();
-                        sincos(alpha, &sin_alpha, &cos_alpha);
-                        cot_alpha = sin_alpha / cos_alpha;
-                        Q = p.V()->P();
-                        p.FlipV();//return to the original vert
 
-                        //go to the NEXT EDGE and the other vertex of the edge
-                        p.FlipE();
-//                        cout << "AFTER FlipE: "<<endl;
-                        p.FlipV();
-//                        cout << "AFTER FlipV: "<< p.V()<<endl;
-                        R = p.V()->P();
-                        edge_idx = map_vert_idx[p.V()];
-//                        cout << "edge index: "<<edge_idx<<endl;
-                        p.FlipV();
-//                        cout << "should be the same of the starting one:"<< p.V()<<endl;
-                        angle = p.AngleRad();
-                        //go to the adjacent face
-                        p.FlipF();
-                        p.FlipE();
+        for (auto vit = vert->begin(); vit != vert->end(); vit++){
+            MyFace* start = vit->VFp();
+            vcg::face::Pos<MyFace> p(start, vit.base());
+            double angle_sum = 0;
+            Point3d p_sum = Point3d (0,0,0);
+            double sin_alpha, cos_alpha, alpha, cot_alpha;
+            double sin_beta, cos_beta, beta,cot_beta;
+            double w = 0, sum_area=0, sum = 0;
+            do
+            {
+                double area = 0, angle;
+                Point3d P, Q, R; //3 vertices to be save for area computation
+                P = p.V()->P();
+                vert0_p = p.V();
 
-                        //go to the opposite vert on the same edge
-                        p.FlipV();
-//                        cout << "AFTER FlipF, FlipE and FlipV (should be different form the others): " << p.V()<<endl;
-                        beta = p.AngleRad();
-                        sincos(beta, &sin_beta, &cos_beta);
-                        p.FlipV();
-                        cot_beta = sin_beta / cos_beta;
-                        w = (cot_alpha + cot_beta) * 0.5;
+                //IN THE PREV EDGE
+                //go to the opposite vert on the same edge
+                p.FlipV();
+                alpha = p.AngleRad();
+                sincos(alpha, &sin_alpha, &cos_alpha);
+                cot_alpha = sin_alpha / cos_alpha;
+                Q = p.V()->P();
+                p.FlipV();//return to the original vert
 
-                        area = compute_area(P, Q, R, angle);
-                        sum += w;
-                        sum_area += area;
-                        //inserting <i, j, w>
-                        laplacian[vert_idx].emplace_back(
-                                tuple<int, int, double>(make_tuple(vert_idx, edge_idx, w)));
+                //go to the NEXT EDGE and the other vertex of the edge
+                p.FlipE();
+                p.FlipV();
+                R = p.V()->P();
+                vert1_p = p.V();
 
-                        //NEXT EDGE becomes CURRENT EDGE
-                        p.FlipE();
-//                        cout << p.f<<endl;
-//                        cout << fi.base()<<endl;
-//                        cout << "EDGE PROCESSED "<<endl;
-                    } while (p.f != fi.base());
-                    //inserting on the diagonal
-                    laplacian[vert_idx].emplace_back(tuple<int, int, double>(make_tuple(vert_idx, vert_idx, -sum)));
-                    laplacian_weights[vert_idx] = tuple<int, int, double>(
-                            make_tuple(vert_idx, vert_idx, 1 / (sum_area / 3)));
-                }
-            }
+                p.FlipV();
+
+                angle = p.AngleRad();
+                //go to the adjacent face
+                p.FlipF();
+                p.FlipE();
+
+                //go to the opposite vert on the same edge
+                p.FlipV();
+                beta = p.AngleRad();
+                sincos(beta, &sin_beta, &cos_beta);
+                p.FlipV();
+                cot_beta = sin_beta / cos_beta;
+                w = (cot_alpha + cot_beta) * 0.5;
+
+                area = compute_area(P, Q, R, angle);
+                sum += w;
+                sum_area += area;
+                //inserting <i, j, w>
+                laplacian.emplace_back(make_tuple(vert0_p, vert1_p, w));
+
+                //NEXT EDGE becomes CURRENT EDGE
+                p.FlipE();
+            }while(p.f!=start);
+            laplacian.emplace_back(make_tuple(vert0_p, vert0_p, -sum));
+            laplacian_weights.emplace_back(make_tuple(vert0_p, vert0_p, 1 / (sum_area / 3)));
         }
     }
 
-
     void print_lapacian(){
         cout << "laplacian size:"<<laplacian.size() <<endl;
-        for(auto item = laplacian.begin(); item != laplacian.end(); item ++){
-            cout << "triples size: "<< item->size()<<endl;
-            for(auto triple = item->begin(); triple != item->end(); triple++){
-                printf("row: %d col:%d value:%f\n", get<0>(*triple), get<1>(*triple), get<2>(*triple));
-            }
+        for(auto item = laplacian.begin(); item != laplacian.end(); item++){
+            printf("row: %d col:%d value:%f\n", map_vert_idx[get<0>(*item)], map_vert_idx[get<1>(*item)], get<2>(*item));
         }
     }
 };
