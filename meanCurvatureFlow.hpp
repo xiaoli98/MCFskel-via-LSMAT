@@ -12,18 +12,24 @@
 #include "utils.hpp"
 
 class MeanCurvatureFlow{
-    typedef MyMesh::PerVertexAttributeHandle<int> map;
 private:
     MyMesh *m;
-    map vert_idx;
+    MyMesh::PerVertexAttributeHandle<int> vert_idx;
+    MyMesh::PerVertexAttributeHandle<bool> isFixed;
+    MyMesh::PerVertexAttributeHandle<bool> isSplitted;
+
 public:
     MeanCurvatureFlow(MyMesh *m){
         this->m = m;
 
         vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
+        isFixed = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isFixed"));
+        isSplitted = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isSplitted"));
         int i = 0;
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++, i++){
             vert_idx[vi] = i;
+            isFixed[vi] = false;
+            isSplitted[vi] = false;
         }
     }
     double SignedVolumeOfTriangle(Point3d p1, Point3d p2, Point3d p3){
@@ -62,9 +68,10 @@ public:
         MyMesh *mesoSkel;
         LaplaceHelper laplaceHelper(m);
         Collapser collapser(m);
+        int counter = 0;
         while(true) {
             laplaceHelper.compute_laplace();
-            collapser.compute();
+            collapser.compute("skel_"+ to_string(counter++)+".off");
             cin.get();
         }
     }

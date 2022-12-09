@@ -27,9 +27,10 @@ private:
 
     int nrows, ncols;
 
-//    unordered_map<MyMesh::VertexType*, Point3d> map_vert_mat;
     MyMesh::PerVertexAttributeHandle<int> vert_idx;
     MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> vert_mat;
+    MyMesh::PerVertexAttributeHandle<bool> isFixed;
+    MyMesh::PerVertexAttributeHandle<bool> isSplitted;
     MyMesh::PerMeshAttributeHandle<laplacian_triple> laplacian;
 public:
     Collapser(MyMesh* m){
@@ -49,12 +50,21 @@ public:
 
         vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
         vert_mat = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("vert_mat"));
+        isFixed = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isFixed"));
+        isSplitted = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isSplitted"));
     }
 
-    void compute(){
+    void compute(string filename){
         createLHS();
         createRHS();
         solveLS();
+        MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> sol = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("solution"));
+
+        for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            vi->P() = sol[vi];
+        }
+        cout << "meso skel created"<<endl;
+        tri::io::ExporterOFF<MyMesh>::Save(*m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
         // todo
         // update contraints
         // update topology
@@ -118,7 +128,26 @@ public:
         }
     }
 
+    void update_omega(){
+        for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(isFixed[vi]){
+                omega_L[vi] = 0;
+                omega_H[vi] = 1.0/zero_TH;
+                omega_M[vi] = 0;
+                continue;
+            }
 
+            omega_L[vi] = omega_L_0;
+            omega_H[vi] = omega_H_0;
+            omega_M[vi] = omega_M_0;
+
+            if(isSplitted[vi]){
+                omega_L[vi] = omega_L_0;
+                omega_H[vi] = omega_H_0;
+                omega_M[vi] = 0;
+            }
+        }
+    }
 };
 
 

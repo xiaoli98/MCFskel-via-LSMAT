@@ -47,7 +47,7 @@ public:
     void compute_laplace() {
         int n_vert = vert->size();
         laplacian.reserve(6 * n_vert);
-        cout << "reserving: "<<6* n_vert<<endl;
+//        cout << "reserving: "<<6* n_vert<<endl;
 //        laplacian_weights.resize(n_vert);
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
         tri::UpdateTopology<MyMesh>::FaceFace(*m);
