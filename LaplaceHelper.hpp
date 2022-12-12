@@ -125,6 +125,7 @@ public:
         }
 
         laplacian_handle = tri::Allocator<MyMesh>::GetPerMeshAttribute<laplacian_triple>(*m, string("laplacian"));
+        laplacian_handle() = laplacian;
     }
 
     void print_lapacian(){
