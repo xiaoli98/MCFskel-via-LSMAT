@@ -70,7 +70,8 @@ public:
         tri::io::ExporterOFF<MyMesh>::Save(*m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
 
         update_omega();
-
+        detect_degeneracies();
+        update_topology();
         // todo
         // update contraints
         // update topology
@@ -125,7 +126,6 @@ public:
 
         if (!std::isfinite(X.norm())){
             throw EIGEN_EXCEPTIONS("Problem with linear least square solution.");
-            return;
         }
 
         MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> sol = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("solution"));
@@ -160,82 +160,140 @@ public:
     void update_topology(){
         int count=0;
         //edge collap
-        for(auto eit = m->edge.begin(); eit != m->edge.end(); eit++){
-            auto v0 = eit->V0(0);
-            auto v1 = eit->V1(0);
-            double edge_length = Distance(v0->P(), v1->P());
-            if(edge_length < edge_threshold()){
-                if(!eit->IsD()) { // and collapsable
-                    v1->P() = (v1->P() + v0->P()) / 2;
 
-                    auto mat0 = vert_mat[v0];
-                    auto mat1 = vert_mat[v1];
-                    double dist1 = Distance(mat0, v1->P());
-                    double dist2 = Distance(mat1, v1->P());
+        MyMesh::VertexType *V0, *V1;
+        double edge_length;
+        tri::UpdateFlags<MyMesh>::FaceClearV(*m);
+        for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
+            if(!fit->IsV() && !fit->IsD()){
+                fit->SetV();
+                for(int i = 0; i < fit->VN(); i++){
+                    V0 = fit->V0(i);
+                    V1 = fit->V1(i);
+                    edge_length = Distance(V0->P(), V1->P());
+                    if(edge_length < edge_threshold()){
+                        V1->P() = (V1->P() + V0->P()) / 2;
 
-                    if (dist1 < dist2)
-                        vert_mat[v1] = vert_mat[v0];
-                    else
-                        vert_mat[v1] = vert_mat[v1];
-                    //todo collapse the edge
+                        auto mat0 = vert_mat[V0];
+                        auto mat1 = vert_mat[V1];
+                        double dist1 = Distance(mat0, V1->P());
+                        double dist2 = Distance(mat1, V1->P());
+
+                        if (dist1 < dist2)
+                            vert_mat[V1] = vert_mat[V0];
+                        else
+                            vert_mat[V1] = vert_mat[V1];
+                        vcg::face::Pos<MyMesh::FaceType> p(fit.base(), V0);
+                        edge_collapse(p);
+                    }
+                    count++;
                 }
             }
         }
+        printf("collapsed %d edges\n", count);
 
         //vertex split
+        int counts = 0;
+        tri::UpdateFlags<MyMesh>::FaceClearV(*m);
         double angle_threshold = 110*(3.14/180); //110° in radiant
-        for (auto eit = m->edge.begin(); eit != m->edge.end(); eit++){
-            MyMesh::FaceType *edgeFP = eit->EFp();
-            vcg::face::Pos<MyMesh::FaceType> p(edgeFP, eit->EFi());
-            MyMesh::VertexType *tobeSplitted;
+        MyMesh::VertexType *tobeSplitted;
+        MyMesh::VertexType *V;
+        for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
+            if(!fit->IsV() && !fit->IsD()){
+                for(int i = 0; i < fit->VN(); i++) {
+                    V = fit->V0(i);
+                    vcg::face::Pos<MyMesh::FaceType> p(V->VFp(), V);
+                    MyMesh::VertexType *A = p.V();
+                    MyMesh::VertexType *B = p.VFlip();
 
-            //calculate the 2 opposite angles of the edge
+                    p.FlipE();
+                    p.FlipV();
+                    MyMesh::VertexType *C = p.V();
+                    double alpha0 = p.AngleRad();
+                    p.FlipV();
+                    p.FlipE();//return on the starting edge
 
-            //angle of the first halfedge
-            MyMesh::VertexType *A = p.V();
-            MyMesh::VertexType *B = p.VFlip();
-            p.FlipE();
-            p.FlipV();
-            MyMesh::VertexType *C = p.V();
-            double alpha0 = p.AngleRad();
-            p.FlipV();
-            p.FlipE();//return on the starting edge
+                    //go to the other face in order to calculate the other opposite angle (angle of the second halfedge)
+                    p.FlipF();
+                    p.FlipE();
+                    p.FlipV();
+                    MyMesh::VertexType  *D = p.V();
+                    double alpha1 = p.AngleRad();
+                    p.FlipV();
+                    p.FlipE();
 
-            //go to the other face in order to calculate the other opposite angle (angle of the second halfedge)
-            p.FlipF();
-            p.FlipE();
-            p.FlipV();
-            MyMesh::VertexType  *D = p.V();
-            double alpha1 = p.AngleRad();
-            p.FlipV();
-            p.FlipE();
+                    double a,b,c;
+                    c = Distance(A->P(), B->P());
+                    b = Distance(A->P(), C->P());
+                    a = Distance(B->P(), C->P());
 
-            double a,b,c;
-            c = Distance(A->P(), B->P());
-            b = Distance(A->P(), C->P());
-            a = Distance(B->P(), C->P());
+                    if(a < zero_TH || b < zero_TH || c < zero_TH){ //edge too short
+                        continue;
+                    }
+                    if(alpha0 > alpha1)
+                        tobeSplitted = C;
+                    else
+                        tobeSplitted = D;
 
-            if(a < zero_TH || b < zero_TH || c < zero_TH){ //edge too short
-                continue;
+                    MyMesh::CoordType projector = (B->P()-A->P()).normalized();
+                    MyMesh::CoordType projectee = tobeSplitted->P() - A->P();
+                    double t = projector.dot(projectee);
+
+                    MyMesh::VertexType *newV = &*tri::Allocator<MyMesh>::AddVertex(*m, A->P() + projector * t);
+                    vertex_split(p, newV);
+
+                    MyMesh::CoordType mat0 = vert_mat[A];
+                    MyMesh::CoordType mat1 = vert_mat[B];
+                    MyMesh::CoordType mat_projector = (mat1 - mat0).normalized();
+                    vert_mat[newV] = mat0 + mat_projector * t;
+                    isSplitted[newV] = true;
+                    counts++;
+                }
             }
-            if(alpha0 > alpha1)
-                tobeSplitted = C;
-            else
-                tobeSplitted = D;
-
-            MyMesh::CoordType projector = (B->P()-A->P()).normalized();
-            MyMesh::CoordType projectee = tobeSplitted->P() - A->P();
-            double t = projector.dot(projectee);
-
-            MyMesh::VertexType newV = *tri::Allocator<MyMesh>::AddVertex(*m, A->P() + projector * t);
-            //todo split the edge on newV
-
-            MyMesh::CoordType mat0 = vert_mat[A];
-            MyMesh::CoordType mat1 = vert_mat[B];
-            MyMesh::CoordType mat_projector = (mat1 - mat0).normalized();
-            vert_mat[newV] = mat0 + mat_projector * t;
-            isSplitted[newV] = true;
         }
+        printf("splitted %d verteces\n", counts);
+    }
+
+    void edge_collapse(vcg::face::Pos<MyMesh::FaceType> &p){
+        MyMesh::VertexType *anchorVert = p.VFlip();
+        MyMesh::FaceType *start_face = p.F();
+        vector<MyMesh::VertexType*> to_be_connected;
+        do{
+            if(!p.F()->IsD()){
+                p.F()->SetD();
+            }
+            p.FlipE();
+            if (p.VFlip() != anchorVert) to_be_connected.emplace_back(p.VFlip());
+            p.FlipF();
+        }while(p.F() != start_face);
+
+        for(int i = 0; i < to_be_connected.size()-1; i++){
+            tri::Allocator<MyMesh>::AddFace(*m,anchorVert, to_be_connected[i], to_be_connected[i+1]);
+        }
+    }
+
+    void vertex_split(vcg::face::Pos<MyMesh::FaceType> &p, MyMesh::VertexType *newV){
+        MyMesh::FaceType *faceA = p.F();
+        MyMesh::FaceType *faceB = p.FFlip();
+        MyMesh::VertexType *A, *B, *C, *D;
+        p.FlipE();
+        A = p.VFlip();
+        p.FlipE();
+
+        p.FlipF();
+        p.FlipE();
+        C = p.VFlip();
+        p.FlipE();
+        B = p.V();
+        D = p.VFlip();
+
+        faceA->SetD();
+        faceB->SetD();
+
+        tri::Allocator<MyMesh>::AddFace(*m, newV, A, B);
+        tri::Allocator<MyMesh>::AddFace(*m, newV, A, D);
+        tri::Allocator<MyMesh>::AddFace(*m, newV, C, B);
+        tri::Allocator<MyMesh>::AddFace(*m, newV, C, D);
     }
 
     void detect_degeneracies(){
@@ -243,9 +301,7 @@ public:
         for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
             if (isFixed[vi]) continue;
 
-            bool fix = false;
             int counter = 0;
-            MyFace* start = vi->VFp();
             vector<MyMesh::VertexType*> adjacentsVertices;
             vcg::face::VVStarVF<MyMesh::FaceType>(vi.base(), adjacentsVertices);
             for(auto adjV = adjacentsVertices.begin(); adjV != adjacentsVertices.end(); adjV++){
