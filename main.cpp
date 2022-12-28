@@ -341,6 +341,9 @@ int main(int argc, char* argv[]){
     tri::RequireVFAdjacency(m);
     tri::UpdateNormal<MyMesh>::PerVertexNormalized(m);
 
+    cout << "mesh name: " <<argv[1] <<endl;
+    cout << "FN: "<< m.FN() << " VN: "<<m.VN()<<endl;
+
 #if LS_MAT
     LSMAT lsmat(&m);
     for(int j = 0; j < 10; j++){

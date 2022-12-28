@@ -15,8 +15,8 @@ class LaplaceHelper{
     typedef vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian_triple;
 private:
     MyMesh *m;
-    MyMesh::VertContainer *vert;
-    MyMesh::FaceContainer *faces;
+//    MyMesh::VertContainer *vert;
+//    MyMesh::FaceContainer *faces;
     laplacian_triple laplacian;
     laplacian_triple laplacian_weights;
 
@@ -25,8 +25,8 @@ private:
 public:
     LaplaceHelper(MyMesh *m){
         this->m = m;
-        vert = &this->m->vert;
-        faces = &this->m->face;
+//        vert = &this->m->vert;
+//        faces = &this->m->face;
         vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
     }
 
@@ -45,16 +45,16 @@ public:
     }
 
     void compute_laplace() {
-        int n_vert = vert->size();
+        int n_vert = m->vert.size();
+        laplacian.clear();
         laplacian.reserve(6 * n_vert);
 //        cout << "reserving: "<<6* n_vert<<endl;
 //        laplacian_weights.resize(n_vert);
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
         tri::UpdateTopology<MyMesh>::FaceFace(*m);
-        tri::UpdateFlags<MyMesh>::VertexClearV(*m);
 //        MyMesh::VertexIterator vi;
-        MyMesh::FaceIterator fi;
-        int visited_vert = 0;
+//        MyMesh::FaceIterator fi;
+//        int visited_vert = 0;
 
         ///creating mapping of vertex and the index
         //todo -> risolto, la copia di vettori e' il male
@@ -63,10 +63,21 @@ public:
         /// TROPPO PYTHON HA ROVINATO LA NUOVA GENERAZIONE
 
         MyMesh::VertexType *vert0_p, *vert1_p;
+//        tri::UpdateFlags<MyMesh>::VertexClearV(*m);
 
-        tri::UpdateFlags<MyMesh>::VertexClearV(*m);
+#if COLLAPESER_DEBUG
+        int nulls = 0;
+        for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
+            if(vit->VFp() == NULL){
+                printf("%p\t", vit.base());
+                nulls++;
+            }
+        }
+        cout <<"null vertexface pointers: "<<nulls<<endl;
+#endif
 
-        for (auto vit = vert->begin(); vit != vert->end(); vit++){
+        for (auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
+            if (vit->IsD()) continue;
             MyFace* start = vit->VFp();
             vcg::face::Pos<MyFace> p(start, vit.base());
             double angle_sum = 0;
@@ -100,6 +111,8 @@ public:
 
                 angle = p.AngleRad();
                 //go to the adjacent face
+                while(p.FFlip() == NULL)
+                    p.FlipF();
                 p.FlipF();
                 p.FlipE();
 

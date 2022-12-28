@@ -5,6 +5,8 @@
 #ifndef MCFSKET_COLLAPSER_H
 #define MCFSKET_COLLAPSER_H
 
+#define COLLAPESER_DEBUG 1
+
 #include <map>
 #include "utils.hpp"
 
@@ -57,31 +59,26 @@ public:
         edge_threshold() = 0.002*m->bbox.Diag();
     }
 
-    void compute(string filename){
+    void compute(){
         createLHS();
         createRHS();
         solveLS();
         MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> sol = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("solution"));
 
         for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
             vi->P() = sol[vi];
         }
-        cout << "meso skel created"<<endl;
-        tri::io::ExporterOFF<MyMesh>::Save(*m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
-
         update_omega();
-        detect_degeneracies();
         update_topology();
-        // todo
-        // update contraints
-        // update topology
-        // detect degeneracies
+        detect_degeneracies();
     }
 
     void createLHS(){
         laplacian = tri::Allocator<MyMesh>::GetPerMeshAttribute<laplacian_triple>(*m, string("laplacian"));
         nrows = 3 * m->VN();
         ncols = m->VN();
+        LHS.setZero();
         LHS.resize(nrows, ncols);
         RHS = Eigen::MatrixXd::Zero(nrows, 3);
         X = Eigen::MatrixXd::Zero(ncols, 3);
@@ -90,27 +87,50 @@ public:
         triplets.reserve(ncols*9);
 
         for (auto l = laplacian().begin(); l != laplacian().end(); l++){
+//#if COLLAPESER_DEBUG
 //            printf("row: %d  col %d  ==>%f\n", vert_idx[get<0>(*l)], vert_idx[get<1>(*l)], get<2>(*l));
+//#endif
             triplets.emplace_back(Eigen::Triplet<double>(vert_idx[get<0>(*l)], vert_idx[get<1>(*l)], get<2>(*l)));
         }
 
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
+//#if COLLAPESER_DEBUG
+//            printf("row: %d  col %d  ==>%f\n", vert_idx[*vi]+ncols, vert_idx[*vi], omega_H[*vi]);
+//#endif
             triplets.emplace_back(Eigen::Triplet<double>(vert_idx[*vi]+ncols, vert_idx[*vi], omega_H[*vi]));
         }
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
+//#if COLLAPESER_DEBUG
+//            printf("row: %d  col %d  ==>%f\n", vert_idx[*vi]+2*ncols, vert_idx[*vi], omega_H[*vi]);
+//#endif
             triplets.emplace_back(Eigen::Triplet<double>(vert_idx[*vi]+2*ncols, vert_idx[*vi], omega_M[*vi]));
         }
+#if COLLAPESER_DEBUG
+        cout << triplets.size()<<endl;
+        cout << "LHS rows:" << LHS.rows()<<endl;
+        cout << "LHS cols:" << LHS.cols()<<endl;
+        for (auto it = triplets.begin(); it != triplets.end(); it++){
+            if (it->row()<0 || it->row()>=LHS.rows() || it->col()<0 || it->col()>=LHS.cols())
+                printf("col: %d\trow:%d\t value: %f\n", it->col(), it->row(), it->value());
+        }
 
+#endif
+        //todo
+        // there is some col index that goes out of the bound
         LHS.setFromTriplets(triplets.begin(), triplets.end());
     }
 
     void createRHS(){
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
             MyMesh::CoordType c = (float)omega_H[vi] * vi->P();
             RHS.row(ncols + vert_idx[vi]) = Eigen::Vector3d(c.X(), c.Y(), c.Z());
         }
 
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
             MyMesh::CoordType c = (float) omega_M[vi] * vert_mat[vi];
             RHS.row(2*ncols + vert_idx[vi]) = Eigen::Vector3d(c.X(), c.Y(), c.Z());
         }
@@ -130,6 +150,7 @@ public:
 
         MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> sol = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("solution"));
         for(auto vi=m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
             Eigen::Vector3d p = X.row(vert_idx[vi]);
             sol[vi] = MyMesh::CoordType(p[0], p[1], p[2]);
         }
@@ -137,6 +158,7 @@ public:
 
     void update_omega(){
         for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
+            if(vi->IsD()) continue;
             if(isFixed[vi]){
                 omega_L[vi] = 0;
                 omega_H[vi] = 1.0/zero_TH;
@@ -156,12 +178,12 @@ public:
         }
     }
 
-
+    typedef tuple<MyMesh::VertexType*,MyMesh::VertexType*,MyMesh::VertexType*> triVert;
     void update_topology(){
         int count=0;
         //edge collap
-
         MyMesh::VertexType *V0, *V1;
+        vector<triVert> newFaces;
         double edge_length;
         tri::UpdateFlags<MyMesh>::FaceClearV(*m);
         for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
@@ -172,25 +194,49 @@ public:
                     V1 = fit->V1(i);
                     edge_length = Distance(V0->P(), V1->P());
                     if(edge_length < edge_threshold()){
+#if COLLAPESER_DEBUG
+                        cout << "edge_length:" << edge_length << " threshold: " << edge_threshold()<<endl;
+                        cout << "V0: "<<V0<<endl;
+#endif
                         V1->P() = (V1->P() + V0->P()) / 2;
 
                         auto mat0 = vert_mat[V0];
                         auto mat1 = vert_mat[V1];
+                        //find the closest medial axis to V1
                         double dist1 = Distance(mat0, V1->P());
                         double dist2 = Distance(mat1, V1->P());
-
+#if COLLAPESER_DEBUG
+                        printf("V1 index: %d\n", vert_idx[V1]);
+#endif
                         if (dist1 < dist2)
                             vert_mat[V1] = vert_mat[V0];
                         else
                             vert_mat[V1] = vert_mat[V1];
                         vcg::face::Pos<MyMesh::FaceType> p(fit.base(), V0);
-                        edge_collapse(p);
+                        vector<triVert> temp;
+                        edge_collapse(p, temp);
+                        newFaces.insert(newFaces.end(), temp.begin(), temp.end());
+                        count++;
                     }
-                    count++;
                 }
             }
         }
+        // create new added faces
+//        cout << "face number before adding new faces:"<< m->FN()<<endl;
+//        cout << "f container size: "<<m->face.size()<<endl;
+        for(auto it = newFaces.begin(); it != newFaces.end(); it++){
+            tri::Allocator<MyMesh>::AddFace(*m,get<0>(*it), get<1>(*it), get<2>(*it))->C() = Color4b::Red;
+        }
+//        cout << "face number after added new faces:"<< m->FN()<<endl;
+//        cout << "f container size: "<<m->face.size()<<endl;
         printf("collapsed %d edges\n", count);
+
+        //cleaning and updating
+        tri::UpdateTopology<MyMesh>::VertexFace(*m);
+        tri::UpdateTopology<MyMesh>::FaceFace(*m);
+        tri::Allocator<MyMesh>::CompactFaceVector(*m);
+        tri::Allocator<MyMesh>::CompactVertexVector(*m);
+        cout << "topology updated, face and vertex cleaned"<<endl;
 
         //vertex split
         int counts = 0;
@@ -221,7 +267,7 @@ public:
                     double alpha1 = p.AngleRad();
                     p.FlipV();
                     p.FlipE();
-
+                    if(alpha0 < angle_threshold || alpha1 < angle_threshold) continue;
                     double a,b,c;
                     c = Distance(A->P(), B->P());
                     b = Distance(A->P(), C->P());
@@ -251,25 +297,37 @@ public:
                 }
             }
         }
+
         printf("splitted %d verteces\n", counts);
+        tri::UpdateTopology<MyMesh>::VertexFace(*m);
+        tri::UpdateTopology<MyMesh>::FaceFace(*m);
+        tri::Allocator<MyMesh>::CompactFaceVector(*m);
+        tri::Allocator<MyMesh>::CompactVertexVector(*m);
+        cout << "topology updated, face and vertex cleaned"<<endl;
     }
 
-    void edge_collapse(vcg::face::Pos<MyMesh::FaceType> &p){
+    void edge_collapse(vcg::face::Pos<MyMesh::FaceType> &p, vector<triVert> &newFaceVerts){
         MyMesh::VertexType *anchorVert = p.VFlip();
         MyMesh::FaceType *start_face = p.F();
         vector<MyMesh::VertexType*> to_be_connected;
         do{
             if(!p.F()->IsD()){
-                p.F()->SetD();
+//                p.F()->SetD();
+                tri::Allocator<MyMesh>::DeleteFace(*m, *p.F());
             }
             p.FlipE();
             if (p.VFlip() != anchorVert) to_be_connected.emplace_back(p.VFlip());
             p.FlipF();
         }while(p.F() != start_face);
-
+#if COLLAPESER_DEBUG
+        cout <<"to be connected size:"<< to_be_connected.size()<<endl;
+#endif
+        newFaceVerts.reserve(to_be_connected.size()-1);
         for(int i = 0; i < to_be_connected.size()-1; i++){
-            tri::Allocator<MyMesh>::AddFace(*m,anchorVert, to_be_connected[i], to_be_connected[i+1]);
+            newFaceVerts.emplace_back(triVert(anchorVert, to_be_connected[i], to_be_connected[i+1]));
         }
+//        p.V()->SetD();
+        tri::Allocator<MyMesh>::DeleteVertex(*m, *p.V());
     }
 
     void vertex_split(vcg::face::Pos<MyMesh::FaceType> &p, MyMesh::VertexType *newV){
@@ -287,8 +345,10 @@ public:
         B = p.V();
         D = p.VFlip();
 
-        faceA->SetD();
-        faceB->SetD();
+        tri::Allocator<MyMesh>::DeleteFace(*m, *faceA);
+        tri::Allocator<MyMesh>::DeleteFace(*m, *faceB);
+//        faceA->SetD();
+//        faceB->SetD();
 
         tri::Allocator<MyMesh>::AddFace(*m, newV, A, B);
         tri::Allocator<MyMesh>::AddFace(*m, newV, A, D);
@@ -299,7 +359,7 @@ public:
     void detect_degeneracies(){
         double length = edge_threshold()/10;
         for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
-            if (isFixed[vi]) continue;
+            if (isFixed[vi] || vi->IsD()) continue;
 
             int counter = 0;
             vector<MyMesh::VertexType*> adjacentsVertices;
