@@ -21,16 +21,6 @@ using namespace std;
 // cosa e' s^t-1 quando sono all'iterazione iniziale?
 // instabilita' numerica
 
-
-//TODO
-//  implemantare la versione "classica"
-//  debugging visuale
-// vedere se le sfere sono corrette
-// gnerare punti e trovare l'energia minima nella bounding box
-
-
-//TODO
-// inizializzare bene anche sfere vecchi 
 class LSMAT{
 public:
     LSMAT(MyMesh *m){
@@ -365,7 +355,7 @@ public:
         cout << "(J^T J)^-1 J^T " << endl<<vec<<endl;
 #endif
 
-        // TODO
+        //TODO
         // entries of Jacobian are the partial derivative of the residual on s
         // the problem should be linearized, but how?
         s_old = s;

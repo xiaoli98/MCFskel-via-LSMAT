@@ -357,9 +357,6 @@ int main(int argc, char* argv[]){
 //        tri::io::ExporterOFF<MyMesh>::Save(m, filename.c_str(), tri::io::Mask::IOM_FACECOLOR);
     }
 #endif
-    //TODO
-    //  esportare le sfere con addSphere()
-    //  mappare le sfere con i colori
 
 #if SPHERE_SHRINK
     VertexConstDataWrapper<MyMesh> ww(m);

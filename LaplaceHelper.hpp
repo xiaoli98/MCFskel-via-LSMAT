@@ -20,14 +20,10 @@ private:
     laplacian_triple laplacian;
     laplacian_triple laplacian_weights;
 
-    MyMesh::PerVertexAttributeHandle<int> vert_idx;
     MyMesh::PerMeshAttributeHandle<laplacian_triple> laplacian_handle;
 public:
     LaplaceHelper(MyMesh *m){
         this->m = m;
-//        vert = &this->m->vert;
-//        faces = &this->m->face;
-        vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
     }
 
     const vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> &getLaplacian() const {
@@ -76,6 +72,10 @@ public:
         cout <<"null vertexface pointers: "<<nulls<<endl;
 #endif
 
+        // todo
+        // Pos is not suitable for mesoskeletons
+        // this is not manifold, so the navigation is not good
+        //a possible idea is to use only VF an FF adjacency
         for (auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
             if (vit->IsD()) continue;
             MyFace* start = vit->VFp();
@@ -144,7 +144,7 @@ public:
     void print_lapacian(){
         cout << "laplacian size:"<<laplacian.size() <<endl;
         for(auto item = laplacian.begin(); item != laplacian.end(); item++){
-            printf("row: %d col:%d value:%f\n", vert_idx[get<0>(*item)], vert_idx[get<1>(*item)], get<2>(*item));
+            printf("row: %lu col:%lu value:%f\n", tri::Index(*m,get<0>(*item)), tri::Index(*m, get<1>(*item)), get<2>(*item));
         }
     }
 };

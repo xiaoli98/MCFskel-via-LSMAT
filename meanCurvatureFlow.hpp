@@ -14,7 +14,6 @@
 class MeanCurvatureFlow{
 private:
     MyMesh *m;
-    MyMesh::PerVertexAttributeHandle<int> vert_idx;
     MyMesh::PerVertexAttributeHandle<bool> isFixed;
     MyMesh::PerVertexAttributeHandle<bool> isSplitted;
 
@@ -22,20 +21,12 @@ public:
     MeanCurvatureFlow(MyMesh *m){
         this->m = m;
 
-        vert_idx = tri::Allocator<MyMesh>::GetPerVertexAttribute<int>(*m, string("map_vert_idx"));
         isFixed = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isFixed"));
         isSplitted = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isSplitted"));
         int i = 0;
         for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++, i++){
-            isFixed[vit] = false;
-            isSplitted[vit] = false;
-        }
-    }
-
-    void update_vindex(){
-        int i = 0;
-        for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++, i++){
-            vert_idx[vit] = i;
+            isFixed[*vit] = false;
+            isSplitted[*vit] = false;
         }
     }
 
@@ -75,12 +66,11 @@ public:
         LaplaceHelper laplaceHelper(m);
         Collapser collapser(m);
         int counter = 0;
-        while(counter < 20) {
+        while(counter < 3) {
             cout << "-------------------------------------------------"<<counter<<"-------------------------------------------------"<<endl;
 //            tri::UpdateTopology<MyMesh>::VertexFace(*m);
 //            tri::UpdateTopology<MyMesh>::FaceFace(*m);
 //            tri::Allocator<MyMesh>::CompactEveryVector(*m);
-            update_vindex();
             laplaceHelper.compute_laplace();
             collapser.compute();
             cout << "meso skel created"<<endl;
