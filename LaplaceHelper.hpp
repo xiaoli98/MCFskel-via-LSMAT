@@ -75,10 +75,12 @@ public:
         // todo
         // Pos is not suitable for mesoskeletons
         // this is not manifold, so the navigation is not good
-        //a possible idea is to use only VF an FF adjacency
+        //a possible idea is to use only VF and FF adjacency
         for (auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
             if (vit->IsD()) continue;
             MyFace* start = vit->VFp();
+            //todo
+            // non dovrei utilizzare Pos, ma fatto sta che anche starlab assume che ogni edge abbia solo 2 facce, quando se il mesh non e' manifold, la cosa non vale
             vcg::face::Pos<MyFace> p(start, vit.base());
             double angle_sum = 0;
             Point3d p_sum = Point3d (0,0,0);

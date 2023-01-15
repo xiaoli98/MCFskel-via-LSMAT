@@ -63,8 +63,10 @@ public:
         }
 
         cout << "SS done"<<endl;
+
         LaplaceHelper laplaceHelper(m);
         Collapser collapser(m);
+
         int counter = 0;
         while(counter < 3) {
             cout << "-------------------------------------------------"<<counter<<"-------------------------------------------------"<<endl;
@@ -74,6 +76,7 @@ public:
             laplaceHelper.compute_laplace();
             collapser.compute();
             cout << "meso skel created"<<endl;
+            cout << "FN: "<< m->FN() << " VN: "<<m->VN()<<endl;
             tri::io::ExporterOFF<MyMesh>::Save(*m, ("skel_"+to_string(counter++)+".off").c_str(), tri::io::Mask::IOM_FACECOLOR);
         }
     }
