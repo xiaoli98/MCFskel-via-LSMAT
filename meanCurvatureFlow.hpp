@@ -74,6 +74,7 @@ public:
 //            tri::UpdateTopology<MyMesh>::FaceFace(*m);
 //            tri::Allocator<MyMesh>::CompactEveryVector(*m);
             laplaceHelper.compute_laplace();
+//            laplaceHelper.print_lapacian();
             collapser.compute();
             cout << "meso skel created"<<endl;
             cout << "FN: "<< m->FN() << " VN: "<<m->VN()<<endl;
