@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <math.h>
 #include <tuple>
+#include <vcg/complex/algorithms/smooth.h>
 #include "utils.hpp"
 
 
@@ -19,6 +20,7 @@ private:
 //    MyMesh::FaceContainer *faces;
     laplacian_triple laplacian;
     laplacian_triple laplacian_weights;
+    tri::Smooth<MyMesh> smoother;
 
     MyMesh::PerMeshAttributeHandle<laplacian_triple> laplacian_handle;
 public:
@@ -40,103 +42,30 @@ public:
         return 0.5 * pq * pr * sin(angle);
     }
 
+    typedef tri::Smooth<MyMesh>::LaplacianInfo LaplacianInfo;
     void compute_laplace() {
         int n_vert = m->vert.size();
         laplacian.clear();
         laplacian.reserve(6 * n_vert);
-//        cout << "reserving: "<<6* n_vert<<endl;
-//        laplacian_weights.resize(n_vert);
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
-        tri::UpdateTopology<MyMesh>::FaceFace(*m);
-//        MyMesh::VertexIterator vi;
-//        MyMesh::FaceIterator fi;
-//        int visited_vert = 0;
-
-        ///creating mapping of vertex and the index
-        //todo -> risolto, la copia di vettori e' il male
-        //  non ben capito ma i puntatori nei container di vertex sono diversi dai puntatori dei vertici nelle facce
-        //  quindi inizializzo la mappa con usando i puntatori dei vertici delle facce
-        /// TROPPO PYTHON HA ROVINATO LA NUOVA GENERAZIONE
-
-        MyMesh::VertexType *vert0_p, *vert1_p;
-//        tri::UpdateFlags<MyMesh>::VertexClearV(*m);
-
-#if COLLAPESER_DEBUG
-        int nulls = 0;
+        
+        LaplacianInfo lpz(MyMesh::CoordType (0, 0, 0), 0);
+        SimpleTempData<typename MyMesh::VertContainer, LaplacianInfo> TD(m->vert, lpz);
+        smoother.AccumulateLaplacianInfo(*m, TD, true);
+        vector<MyMesh::VertexPointer> adjacentVertices;
+        size_t i, j;
+        double w, sum_w;
         for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
-            if(vit->VFp() == NULL){
-                printf("%p\t", vit.base());
-                nulls++;
+            sum_w = 0;
+            vcg::face::VVStarVF<MyMesh::FaceType>(vit.base(), adjacentVertices);
+            for(auto adjv = adjacentVertices.begin(); adjv != adjacentVertices.end(); adjv++){
+//                i = tri::Index(*m, vit.base());
+//                j = tri::Index(*m, *(adjv.base()));
+                w = TD[vit.base()].cnt * 0.5;
+                sum_w += w;
+                laplacian.emplace_back(make_tuple(vit.base(), *(adjv.base()), w));
             }
-        }
-        cout <<"null vertexface pointers: "<<nulls<<endl;
-#endif
-
-        // todo
-        // Pos is not suitable for mesoskeletons
-        // this is not manifold, so the navigation is not good
-        //a possible idea is to use only VF and FF adjacency
-        for (auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
-            if (vit->IsD()) continue;
-            MyFace* start = vit->VFp();
-            //todo
-            // non dovrei utilizzare Pos, ma fatto sta che anche starlab assume che ogni edge abbia solo 2 facce, quando se il mesh non e' manifold, la cosa non vale
-            vcg::face::Pos<MyFace> p(start, vit.base());
-            double angle_sum = 0;
-            Point3d p_sum = Point3d (0,0,0);
-            double sin_alpha, cos_alpha, alpha, cot_alpha;
-            double sin_beta, cos_beta, beta,cot_beta;
-            double w = 0, sum_area=0, sum = 0;
-            do
-            {
-                double area = 0, angle;
-                Point3d P, Q, R; //3 vertices to be save for area computation
-                P = p.V()->P();
-                vert0_p = p.V();
-
-                //IN THE PREV EDGE
-                //go to the opposite vert on the same edge
-                p.FlipV();
-                alpha = p.AngleRad();
-                sincos(alpha, &sin_alpha, &cos_alpha);
-                cot_alpha = cos_alpha / sin_alpha;
-                Q = p.V()->P();
-                p.FlipV();//return to the original vert
-
-                //go to the NEXT EDGE and the other vertex of the edge
-                p.FlipE();
-                p.FlipV();
-                R = p.V()->P();
-                vert1_p = p.V();
-
-                p.FlipV();
-
-                angle = p.AngleRad();
-                //go to the adjacent face
-                while(p.FFlip() == NULL)
-                    p.FlipF();
-                p.FlipF();
-                p.FlipE();
-
-                //go to the opposite vert on the same edge
-                p.FlipV();
-                beta = p.AngleRad();
-                sincos(beta, &sin_beta, &cos_beta);
-                p.FlipV();
-                cot_beta = cos_beta / sin_beta;
-                w = (cot_alpha + cot_beta) * 0.5;
-
-                area = compute_area(P, Q, R, angle);
-                sum += w;
-                sum_area += area;
-                //inserting <i, j, w>
-                laplacian.emplace_back(make_tuple(vert0_p, vert1_p, w));
-
-                //NEXT EDGE becomes CURRENT EDGE
-                p.FlipE();
-            }while(p.f!=start);
-            laplacian.emplace_back(make_tuple(vert0_p, vert0_p, -sum));
-            laplacian_weights.emplace_back(make_tuple(vert0_p, vert0_p, 1 / (sum_area / 3)));
+            laplacian.emplace_back(make_tuple(vit.base(), vit.base(), -sum_w));
         }
 
         laplacian_handle = tri::Allocator<MyMesh>::GetPerMeshAttribute<laplacian_triple>(*m, string("laplacian"));
