@@ -5,7 +5,7 @@
 #ifndef MCFSKET_COLLAPSER_H
 #define MCFSKET_COLLAPSER_H
 
-#define COLLAPESER_DEBUG 0
+#define COLLAPESER_DEBUG 1
 
 #include <map>
 #include <vcg/complex/algorithms/edge_collapse.h>
@@ -14,6 +14,8 @@
 class Collapser{
     typedef MyMesh::PerVertexAttributeHandle<double> omega;
     typedef vector<tuple<MyMesh::VertexType*, MyMesh::VertexType*, double>> laplacian_triple;
+    typedef tri::BasicVertexPair<MyMesh::VertexType> VertexPair;
+
 private:
     MyMesh *m;
     double omega_L_0;
@@ -35,26 +37,8 @@ private:
     MyMesh::PerVertexAttributeHandle<bool> isSplitted;
     MyMesh::PerMeshAttributeHandle<laplacian_triple> laplacian;
     MyMesh::PerMeshAttributeHandle<double> edge_threshold;
+    tri::EdgeCollapser<MyMesh, VertexPair> collapser;
 
-    //some utility functions
-//    bool isInCommon(const MyMesh::VertexType *v, const MyMesh::FaceType *fb){
-//        for(int i = 0; i < 3; i++){
-//            if(fb->V(i) == v) return true;
-//        }
-//        return false;
-//    }
-//    int edge_index(const MyMesh::FaceType* f, const MyMesh::VertexType *v){
-//        for(int i = 0; i < 3; i++){
-//            if(f->V(i) == v) return i;
-//        }
-//        return -1;
-//    }
-
-//    int third_vert(const MyMesh::FaceType *f, const MyMesh::VertexType *v1, const MyMesh::VertexType *v2){
-//        for(int i = 0; i < 3; i++){
-//            if(f->V(i) != v1 && f->V(i) != v2) return i;
-//        }
-//    }
 public:
     Collapser(MyMesh* m){
         this->m = m;
@@ -90,9 +74,8 @@ public:
         }
         update_omega();
         update_topology();
-        detect_degeneracies();
-
         tri::io::ExporterOFF<MyMesh>::Save(*m, "prova.off", tri::io::Mask::IOM_FACECOLOR);
+        detect_degeneracies();
 
 //        int counter = 0;
 //        for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
@@ -107,7 +90,6 @@ public:
 //            }
 //        }
 //        cout << "non manifold face: "<<counter<<endl;
-
     }
 
     void createLHS(){
@@ -204,29 +186,21 @@ public:
     }
 
     typedef tuple<MyMesh::VertexType*,MyMesh::VertexType*,MyMesh::VertexType*> triVert;
+    typedef tuple<MyMesh::VertexType*,MyMesh::VertexType*,MyMesh::VertexType*, MyMesh::VertexType*> quadVert;
     void update_topology(){
-        //todo
-        // Pos is not suitable for mesoskeletons
-        // this is not manifold, so the navigation is not good
-        // a possible idea is to use only VF adjacency
-
         edge_collapse();
-        edge_split();
+        edge_split1();
         cout << "topology updated, face and vertex cleaned"<<endl;
     }
 
-    typedef tri::BasicVertexPair<MyMesh::VertexType> VertexPair;
     void edge_collapse(){
         tri::EdgeCollapser<MyMesh, VertexPair> collapser;
         int count=0;
         MyMesh::VertexType *V0, *V1;
-//        vector<triVert> newFaces;
         double edge_length;
-//        tri::UpdateFlags<MyMesh>::FaceClearV(*m);
         tri::UpdateFlags<MyMesh>::VertexClearV(*m);
 
         vector<MyMesh::VertexPointer> adjVertices;
-//        newFaces.reserve(4);
         for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++) {
             if(!vit->IsD()) {
                 face::VVStarVF<MyMesh::FaceType>(vit.base(), adjVertices);
@@ -255,47 +229,13 @@ public:
                             vert_mat[V1] = vert_mat[V1];
 
                         VertexPair vpair(V0, V1);
-                        collapser.Do(*m, vpair, V1->P());
-                        count++;
-                        break;
-//                        vcg::face::Pos<MyMesh::FaceType> p(fp, V0);
-//                        vector<triVert> temp;
-//
-//                        MyMesh::VertexType *anchorVert = p.VFlip();
-//                        MyMesh::FaceType *start_face = p.F();
-//                        vector<MyMesh::VertexType *> to_be_connected;
-//                        do {
-//                            if (!p.F()->IsD()) {
-//                                tri::Allocator<MyMesh>::DeleteFace(*m, *p.F());
-//                            }
-//                            p.FlipE();
-//                            if (p.VFlip() != anchorVert && !p.VFlip()->IsD()) {
-//                                to_be_connected.emplace_back(p.VFlip());
-//                            }
-//                            p.FlipF();
-//                        } while (p.F() != start_face);
-//
-//                        temp.reserve(to_be_connected.size() - 1);
-//                        for (int j = 0; j < to_be_connected.size() - 1; j++) {
-//                            temp.emplace_back(triVert(anchorVert, to_be_connected[j], to_be_connected[j + 1]));
-//                        }
-//                        printf("deleting vertex %p\n", V0);
-//                        tri::Allocator<MyMesh>::DeleteVertex(*m, *V0);
-//
-//                        newFaces.insert(newFaces.end(), temp.begin(), temp.end());
-//                        count++;
-//                        break;// one ring faces on vit are deleted, so if there was any other edges, are collapsed together
+                        if(collapser.LinkConditions(vpair)){
+                            collapser.Do(*m, vpair, V1->P());
+                            count++;
+                            break;
+                        }
                     }
                 }
-//                MyMesh::FaceIterator fi = tri::Allocator<MyMesh>::AddFaces(*m, newFaces.size());
-//                for(auto it = newFaces.begin();fi!=m->face.end(); fi++, it++){
-//                    fi->V0(0) = get<0>(*it);
-//                    fi->V1(0) = get<1>(*it);
-//                    fi->V2(0) = get<2>(*it);
-//                }
-//
-//                newFaces.clear();
-//                newFaces.reserve(4);
             }
         }
 
@@ -306,36 +246,206 @@ public:
         tri::Allocator<MyMesh>::CompactVertexVector(*m);
     }
 
+    class EdgeInfo{
+    public:
+        double angles[2];
+        double length;
+        MyMesh::VertexPointer oppositeVert[2];
+        MyMesh::FacePointer faces[2];
+        MyMesh::VertexPointer edge_verts[2];
+        EdgeInfo(MyMesh::VertexPointer v1, MyMesh::VertexPointer v2){
+            edge_verts[0] = v1;
+            edge_verts[1] = v2;
+            sort();
+        }
+        void sort(){
+            if(edge_verts[0] > edge_verts[1]) swap(edge_verts[0], edge_verts[1]);
+        }
+    };
+
+    struct EdgeComp{
+        bool operator()(const EdgeInfo e1, const EdgeInfo e2){
+            if(e1.edge_verts[0] < e2.edge_verts[0])
+                return true;
+            else if (e1.edge_verts[0] == e2.edge_verts[0]){
+                if(e1.edge_verts[1] < e2.edge_verts[1])
+                    return true;
+                else
+                    return false;
+            }
+            else
+                return false;
+        }
+    };
+
+    void edge_split1(){
+        vector<quadVert> splittingFaceVerts;
+        vector<tuple<MyMesh::CoordType, double>> newCoords;
+        double angle_threshold = 110*(3.14/180); //110° in radiant
+        map<EdgeInfo, int, EdgeComp> allEdges;
+        for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
+            for(int i = 0; i < fit->VN(); i++){
+                EdgeInfo edgeInfo(fit->V0(i), fit->V1(i));
+                edgeInfo.length = Distance(fit->V0(i)->cP(), fit->V1(i)->cP());
+                auto exist = allEdges.find(edgeInfo);
+                if(exist != allEdges.end()) {
+                    edgeInfo.faces[1] = fit.base();
+                    edgeInfo.oppositeVert[1] = fit->V2(i);
+                    edgeInfo.angles[1] = Angle(fit->V0(i)->cP() - fit->V2(i)->cP(), fit->V1(i)->cP() - fit->V2(i)->cP());
+                    allEdges[edgeInfo]++;
+                }
+                else {
+                    edgeInfo.faces[0] = fit.base();
+                    edgeInfo.oppositeVert[0] = fit->V2(i);
+                    edgeInfo.angles[0] = Angle(fit->V0(i)->cP() - fit->V2(i)->cP(), fit->V1(i)->cP() - fit->V2(i)->cP());
+                    allEdges.insert(std::make_pair(edgeInfo, 1));
+                }
+            }
+        }
+        printf("total edges: %lu\n", allEdges.size());
+        for(auto edge : allEdges){
+            EdgeInfo info = edge.first;
+            int count =edge.second;
+            if(count > 1 && info.length >= zero_TH && !info.faces[0]->IsD() && !info.faces[1]->IsD()){
+                if(info.angles[0] >= angle_threshold && info.angles[1] >= angle_threshold) { // ill-formed triangle
+                    MyMesh::VertexPointer side_vert = info.angles[0] > info.angles[1] ? info.oppositeVert[0] : info.oppositeVert[1];
+                    MyMesh::CoordType projector = (info.edge_verts[0]->cP() - info.edge_verts[1]->cP()).Normalize();
+                    MyMesh::CoordType projectee = side_vert->cP() - info.edge_verts[0]->cP();
+                    double t = projector.dot(projectee);    //a coefficient for the new vertex coordinates
+                    newCoords.emplace_back(tuple<MyMesh::CoordType, double>(info.edge_verts[0]->cP() + projector * t, t));
+                    tri::Allocator<MyMesh>::DeleteFace(*m, *info.faces[0]);
+                    tri::Allocator<MyMesh>::DeleteFace(*m, *info.faces[1]);
+#if COLLAPESER_DEBUG
+                    printf("-------\n");
+                    PRINTP(info.edge_verts[0]->cP())
+                    PRINTP(info.edge_verts[1]->cP())
+                    PRINTP(info.oppositeVert[0]->cP())
+                    PRINTP(info.oppositeVert[1]->cP())
+                    assert(info.edge_verts[0] != info.edge_verts[1] && info.edge_verts[0] != info.oppositeVert[0] && info.edge_verts[0] != info.oppositeVert[1]);
+                    assert(info.edge_verts[1] != info.oppositeVert[0] && info.edge_verts[1] != info.oppositeVert[1]);
+                    assert(info.oppositeVert[0] != info.oppositeVert[1]);
+#endif
+                    splittingFaceVerts.emplace_back(quadVert(info.edge_verts[0], info.edge_verts[1], info.oppositeVert[0], info.oppositeVert[1]));
+                }
+            }
+        }
+
+        //allocating new vertices and new faces
+        vector<triVert> newFaces;
+        tri::Allocator<MyMesh>::PointerUpdater<MyMesh::VertexPointer> vpu;
+        MyMesh::VertexIterator vi = tri::Allocator<MyMesh>::AddVertices(*m, newCoords.size(), vpu);
+
+        assert(splittingFaceVerts.size() == newCoords.size());
+
+        auto splittingFaceIt = splittingFaceVerts.begin();
+        auto coordsIt = newCoords.begin();
+        while(vi != m->vert.end()){
+            MyMesh::CoordType coord = get<0>(*coordsIt);
+            double t = get<1>(*coordsIt);
+            vi->P() = coord;
+            MyMesh::VertexPointer v0 = get<0>(*splittingFaceIt);
+            MyMesh::VertexPointer v1 = get<1>(*splittingFaceIt);
+            MyMesh::VertexPointer v2 = get<2>(*splittingFaceIt);
+            MyMesh::VertexPointer v3 = get<3>(*splittingFaceIt);
+            if(vpu.NeedUpdate()){
+                vpu.Update(v0);
+                vpu.Update(v1);
+                vpu.Update(v2);
+                vpu.Update(v3);
+            }
+            newFaces.emplace_back(triVert(v0, vi.base(), v2));
+            newFaces.emplace_back(triVert(vi.base(), v1, v2));
+            newFaces.emplace_back(triVert(v0, v3, vi.base()));
+            newFaces.emplace_back(triVert(vi.base(), v3, v1));
+
+            MyMesh::CoordType mat0 = vert_mat[v0];
+            MyMesh::CoordType mat1 = vert_mat[v1];
+            MyMesh::CoordType mat_projector = (mat1 - mat0).normalized();
+            vert_mat[vi] = mat0 + mat_projector * t;
+            isSplitted[vi] = true;
+
+            vi++;
+            splittingFaceIt++;
+            coordsIt++;
+        }
+        MyMesh::FaceIterator  fi = tri::Allocator<MyMesh>::AddFaces(*m, newFaces.size());
+        for(auto nfi = newFaces.begin(); nfi != newFaces.end() && fi!=m->face.end(); nfi++, fi++){
+            fi->V(0) = get<0>(*nfi);
+            fi->V(1) = get<1>(*nfi);
+            fi->V(2) = get<2>(*nfi);
+            fi->C() = Color4b::Red;
+        }
+
+        printf("splitted %lu edges\n", newCoords.size());
+        tri::UpdateTopology<MyMesh>::VertexFace(*m);
+        tri::Allocator<MyMesh>::CompactFaceVector(*m);
+        tri::Allocator<MyMesh>::CompactVertexVector(*m);
+    }
+
     void edge_split(){
         tri::UpdateFlags<MyMesh>::VertexClearV(*m);
         double angle_threshold = 110*(3.14/180); //110° in radiant
         vector<triVert> newFaces;               //contains 3 vertices where faces should be created
-        vector<triVert> splittingFaceVerts;     //deleted faces vertices
+        vector<quadVert> splittingFaceVerts;     //deleted faces vertices
         vector<tuple<MyMesh::CoordType, double>> newCoords;
+        MyMesh::FacePointer faceA, faceB;
+
+        vector<MyMesh::FacePointer> fromVec;
+        vector<int> idxFrom;
+
+        double oppositeAngleA, oppositeAngleB;
+        int vn;
 
         for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++){
             vit->SetV();
             face::VFIterator<MyMesh::FaceType> vfi(vit.base());
-            for(;!vfi.End(); ++vfi){
-                MyMesh::FacePointer faceA = vfi.F();
-                if(faceA->IsD()) continue;
-                int vn = vfi.F()->VN();
+            for(;!vfi.End(); ++vfi) {
+                faceA = vfi.F();
+//                if(faceA->IsD()) continue;
+                vn = vfi.F()->VN();
+                MyMesh::VertexPointer from_vert = faceA->V(vfi.I());
+//                assert(vit.base() == faceA->V(vfi.I()));
+                MyMesh::VertexPointer to_vert = faceA->V((vfi.I() + 1) % vn);
+                if (to_vert->IsV()) continue; //edge already processed
 
-                MyMesh::VertexPointer from_vert = vit.base();
-                MyMesh::VertexPointer to_vert = vfi.F()->V((vfi.I()+1)%vn);
-                MyMesh::VertexPointer edge_oppositeVert = vfi.F()->V((vfi.I()+2)%vn);
-                if(to_vert->IsV()) continue; //edge already processed
+                MyMesh::VertexPointer edge_oppositeVertA = faceA->V((vfi.I() + 2) % vn);
+                MyMesh::VertexPointer edge_oppositeVertB;
+
+                face::VFStarVF(from_vert, fromVec, idxFrom);
+                auto idx = idxFrom.begin();
+                //find the adjacent face and the vertex opposite to the edge
+                bool faceFound = false;
+                for (auto f = fromVec.begin(); f != fromVec.end(); f++, idx++) {
+                    vn = (*f.base())->VN();
+                    if ((to_vert == (*(f.base()))->V((*idx + 1) % vn) ||
+                         to_vert == (*(f.base()))->V((*idx + 2) % vn)) && *f.base() != faceA) { faceB = *(f.base()); faceFound = true;}
+                }
+                for(int i = 0; i < vn; i++){
+                    printf("face found: %d\n", faceFound);
+                    if(faceB->V(i) != from_vert && faceB->V(i) != to_vert){
+                        edge_oppositeVertB = faceB->V((i));
+                        break;
+                    }
+                }
+                oppositeAngleB = Angle(from_vert->cP() - edge_oppositeVertB->cP(), to_vert->cP() - edge_oppositeVertB->cP());
+
                 if(Distance(from_vert->P(), to_vert->P()) < zero_TH) continue;//too short edge, should be collapsed
 
-                double opposite_angle = Angle(from_vert->cP() - edge_oppositeVert->cP(), to_vert->cP() - edge_oppositeVert->cP());
-                if(opposite_angle < angle_threshold) continue;
-                MyMesh::CoordType projector = (to_vert->P()-from_vert->P()).normalized();
-                MyMesh::CoordType projectee = vit->P() - from_vert->P();
+                oppositeAngleA = Angle(from_vert->cP() - edge_oppositeVertA->cP(), to_vert->cP() - edge_oppositeVertA->cP());
+#if COLLAPESER_DEBUG
+//                printf("Angle A: %f \t Angle B: %f \t threshold: %f\n", oppositeAngleA, oppositeAngleB, angle_threshold);
+#endif
+                if(oppositeAngleA < angle_threshold || oppositeAngleB < angle_threshold) continue;
+
+                MyMesh::VertexPointer side_vert = oppositeAngleA > oppositeAngleB ?  edge_oppositeVertA : edge_oppositeVertB;
+                MyMesh::CoordType projector = (to_vert->P()-from_vert->P()).Normalize();
+                MyMesh::CoordType projectee = side_vert->P() - from_vert->P();
                 double t = projector.dot(projectee);    //a coefficient for the new vertex coordinates
 
                 newCoords.emplace_back(tuple<MyMesh::CoordType, double>(from_vert->P() + projector * t, t));
-                tri::Allocator<MyMesh>::DeleteFace(*m, *faceA);
-                splittingFaceVerts.emplace_back(triVert(from_vert, edge_oppositeVert, to_vert));
+                if(!faceA->IsD()) tri::Allocator<MyMesh>::DeleteFace(*m, *faceA);
+                if(!faceB->IsD()) tri::Allocator<MyMesh>::DeleteFace(*m, *faceB);
+                splittingFaceVerts.emplace_back(quadVert (from_vert, to_vert, edge_oppositeVertA, edge_oppositeVertB));
             }
         }
 
@@ -351,19 +461,24 @@ public:
             MyMesh::CoordType coord = get<0>(*coordsIt);
             double t = get<1>(*coordsIt);
             vi->P() = coord;
+
             MyMesh::VertexPointer v0 = get<0>(*splittingFaceIt);
             MyMesh::VertexPointer v1 = get<1>(*splittingFaceIt);
             MyMesh::VertexPointer v2 = get<2>(*splittingFaceIt);
+            MyMesh::VertexPointer v3 = get<3>(*splittingFaceIt);
             if(vpu.NeedUpdate()){
                 vpu.Update(v0);
                 vpu.Update(v1);
                 vpu.Update(v2);
+                vpu.Update(v3);
             }
-            newFaces.emplace_back(triVert(vi.base(), v0, v1));
+            newFaces.emplace_back(triVert(v0, vi.base(), v2));
             newFaces.emplace_back(triVert(vi.base(), v1, v2));
+            newFaces.emplace_back(triVert(v0, v3, vi.base()));
+            newFaces.emplace_back(triVert(vi.base(), v3, v1));
 
             MyMesh::CoordType mat0 = vert_mat[v0];
-            MyMesh::CoordType mat1 = vert_mat[v2];
+            MyMesh::CoordType mat1 = vert_mat[v1];
             MyMesh::CoordType mat_projector = (mat1 - mat0).normalized();
             vert_mat[vi] = mat0 + mat_projector * t;
             isSplitted[vi] = true;
@@ -372,29 +487,16 @@ public:
             splittingFaceIt++;
             coordsIt++;
         }
-        assert(newFaces.size() == 2*newCoords.size());
         MyMesh::FaceIterator  fi = tri::Allocator<MyMesh>::AddFaces(*m, newFaces.size());
         for(auto nfi = newFaces.begin(); nfi != newFaces.end() && fi!=m->face.end(); nfi++, fi++){
             fi->V(0) = get<0>(*nfi);
             fi->V(1) = get<1>(*nfi);
             fi->V(2) = get<2>(*nfi);
-
-#if COLLAPESER_DEBUG
-            int i0, i1, i2;
-            i0 = tri::Index(*m, get<0>(*nfi));
-            i1 = tri::Index(*m, get<1>(*nfi));
-            i2 = tri::Index(*m, get<2>(*nfi));
-            printf("%d %d %d\n", i0,i1,i2);
-            for(int j = 0; j< fi->VN(); j++){
-                assert(fi->V(j) != NULL);
-            }
-#endif
             fi->C() = Color4b::Red;
         }
 
         printf("splitted %lu edges\n", newCoords.size());
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
-//        tri::UpdateTopology<MyMesh>::FaceFace(*m);
         tri::Allocator<MyMesh>::CompactFaceVector(*m);
         tri::Allocator<MyMesh>::CompactVertexVector(*m);
     }
@@ -410,23 +512,11 @@ public:
 
             for(auto adjV = adjacentVertices.begin(); adjV != adjacentVertices.end(); adjV++){
                 double edge_length = Distance(vi->P(), adjV.operator*()->P());
-                if(edge_length <= length){ //here should be another constraints which check if is collapsable, but not done
+                VertexPair vpair(vi.base(), (*adjV.base()));
+                if(edge_length <= length && collapser.LinkConditions(vpair)){ //here should be another constraints which check if is collapsable, but not done
                     counter++;
                 }
             }
-
-//            vcg::face::VFIterator<MyFace> vfi(vi.base()); //initialize the iterator tohe first face
-//            for(;!vfi.End();++vfi){
-//                if(vfi.F()->IsD()) continue;
-//
-//                int vn = vfi.F()->VN();
-//                MyMesh::VertexPointer V1 = vfi.F()->V((vfi.I()+1)%vn);
-//                MyMesh::VertexPointer V2 = vfi.F()->V((vfi.I()+2)%vn);
-//                if( Distance(vi->P(), V1->P()) <= length ||
-//                    Distance(vi->P(), V2->P()) <= length){
-//                    counter++;
-//                }
-//            }
 
             if (counter >= 2) {
                 isFixed[vi] = true;

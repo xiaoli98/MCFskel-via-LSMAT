@@ -68,7 +68,7 @@ public:
         Collapser collapser(m);
 
         int counter = 0;
-        while(counter < 3) {
+        while(counter < 5) {
             cout << "-------------------------------------------------"<<counter<<"-------------------------------------------------"<<endl;
 //            tri::UpdateTopology<MyMesh>::VertexFace(*m);
 //            tri::UpdateTopology<MyMesh>::FaceFace(*m);
