@@ -5,7 +5,7 @@
 #ifndef MCFSKET_COLLAPSER_H
 #define MCFSKET_COLLAPSER_H
 
-#define COLLAPESER_DEBUG 1
+#define COLLAPESER_DEBUG 0
 
 #include <map>
 #include <vcg/complex/algorithms/edge_collapse.h>
@@ -75,21 +75,7 @@ public:
         update_omega();
         update_topology();
         tri::io::ExporterOFF<MyMesh>::Save(*m, "prova.off", tri::io::Mask::IOM_FACECOLOR);
-        detect_degeneracies();
-
-//        int counter = 0;
-//        for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
-//            printf("-------------FACE %lu----------------\n", tri::Index(*m, fit.base()));
-//            if(fit->IsD()) continue;
-//            for(int i=0; i<fit->VN(); i++){
-//                PRINTP(fit->V(i)->P());
-//                f == f->FFp(e)->FFp(f->FFi(e))
-//                MyMesh::FacePointer temp = fit->FFp(i)->FFp(fit->FFi(i));
-//
-//                if(fit.base() != temp) counter++;
-//            }
-//        }
-//        cout << "non manifold face: "<<counter<<endl;
+//        detect_degeneracies();
     }
 
     void createLHS(){
@@ -194,7 +180,6 @@ public:
     }
 
     void edge_collapse(){
-        tri::EdgeCollapser<MyMesh, VertexPair> collapser;
         int count=0;
         MyMesh::VertexType *V0, *V1;
         double edge_length;
@@ -248,73 +233,117 @@ public:
 
     class EdgeInfo{
     public:
-        double angles[2];
-        double length;
-        MyMesh::VertexPointer oppositeVert[2];
-        MyMesh::FacePointer faces[2];
-        MyMesh::VertexPointer edge_verts[2];
-        EdgeInfo(MyMesh::VertexPointer v1, MyMesh::VertexPointer v2){
-            edge_verts[0] = v1;
-            edge_verts[1] = v2;
-            sort();
+//        vector<double> angles;
+        vector<MyMesh::VertexPointer> oppositeVert;
+        vector<MyMesh::FacePointer> faces;
+        vector<bool> mask;
+        vector<int> faceV0Idx;
+//        MyMesh::VertexPointer edge_verts[2];
+        int count;
+        EdgeInfo(){
+            count = 1;
+            faces.reserve(2);
+            oppositeVert.reserve(2);
+            mask.reserve(2);
         }
-        void sort(){
-            if(edge_verts[0] > edge_verts[1]) swap(edge_verts[0], edge_verts[1]);
+        void addFace(MyMesh::FacePointer f){faces.emplace_back(f);}
+        void addOppositeVert(MyMesh::VertexPointer v){oppositeVert.emplace_back(v);}
+        void addMask(bool ma){ mask.emplace_back(ma);}
+        void addV0Idx(int i){faceV0Idx.emplace_back(i);}
+        MyMesh::FacePointer getFace(int i){
+            assert(i<faces.size() && i>=0);
+            return faces[i];
+        }
+        MyMesh::VertexPointer getOppositeVert(int i){
+            assert(i < oppositeVert.size() && i >= 0);
+            return oppositeVert[i];
+        }
+        bool getMask(int i){
+            assert(i < mask.size() && i>=0);
+            return mask[i];
+        }
+        int getV0Idx(int i){
+            assert(i < faceV0Idx.size() && i >= 0);
+            return faceV0Idx[i];
         }
     };
 
     struct EdgeComp{
-        bool operator()(const EdgeInfo e1, const EdgeInfo e2){
-            if(e1.edge_verts[0] < e2.edge_verts[0])
-                return true;
-            else if (e1.edge_verts[0] == e2.edge_verts[0]){
-                if(e1.edge_verts[1] < e2.edge_verts[1])
-                    return true;
-                else
-                    return false;
-            }
-            else
-                return false;
+        bool operator()(array<MyMesh::VertexPointer,2> e1, array<MyMesh::VertexPointer,2> e2){
+            if(e1[0] != e2[0]) return e1[0] < e2[0];
+            else return e1[1] < e2[1];
         }
     };
 
     void edge_split1(){
-        vector<quadVert> splittingFaceVerts;
-        vector<tuple<MyMesh::CoordType, double>> newCoords;
+        vector<triVert> splittingFaceVerts;
+        vector<tuple<MyMesh::CoordType, MyMesh::CoordType>> newCoords;
+        vector<bool> mask; //a mask for identify if the face uses the same splitting with the previous face
+        bool flag = false;
         double angle_threshold = 110*(3.14/180); //110° in radiant
-        map<EdgeInfo, int, EdgeComp> allEdges;
+        map<array<MyMesh::VertexPointer,2>, EdgeInfo, EdgeComp> allEdges;
         for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
             for(int i = 0; i < fit->VN(); i++){
-                EdgeInfo edgeInfo(fit->V0(i), fit->V1(i));
-                edgeInfo.length = Distance(fit->V0(i)->cP(), fit->V1(i)->cP());
-                auto exist = allEdges.find(edgeInfo);
-                if(exist != allEdges.end()) {
-                    edgeInfo.faces[1] = fit.base();
-                    edgeInfo.oppositeVert[1] = fit->V2(i);
-                    edgeInfo.angles[1] = Angle(fit->V0(i)->cP() - fit->V2(i)->cP(), fit->V1(i)->cP() - fit->V2(i)->cP());
-                    allEdges[edgeInfo]++;
+                array<MyMesh::VertexPointer, 2> vertPair = {fit->V0(i), fit->V1(i)}; //aka edge
+                if(vertPair[0] > vertPair[1]) swap(vertPair[0], vertPair[1]);
+                if(allEdges.find(vertPair) != allEdges.end()) {
+                    EdgeInfo *edgeInfo = &allEdges[vertPair];
+                    if(edgeInfo->count > 1){
+                        printf("arco strambo!\n");
+                    }
+                    edgeInfo->addFace(fit.base());
+                    edgeInfo->addV0Idx(i);
+                    edgeInfo->addOppositeVert(fit->V2(i));
+
+                    if(edgeInfo->getOppositeVert(0) == edgeInfo->getOppositeVert(1)){
+                        printf("faccia sovrapposta!\n");
+                        edgeInfo->addMask(false);
+                    }
+                    else
+                        edgeInfo->addMask(true);
+                    edgeInfo->count++;
                 }
                 else {
-                    edgeInfo.faces[0] = fit.base();
-                    edgeInfo.oppositeVert[0] = fit->V2(i);
-                    edgeInfo.angles[0] = Angle(fit->V0(i)->cP() - fit->V2(i)->cP(), fit->V1(i)->cP() - fit->V2(i)->cP());
-                    allEdges.insert(std::make_pair(edgeInfo, 1));
+                    EdgeInfo edgeInfo;
+                    edgeInfo.addFace(fit.base());
+                    edgeInfo.addV0Idx(i);
+                    edgeInfo.addOppositeVert(fit->V2(i));
+                    edgeInfo.addMask(true);
+                    allEdges.insert(pair<array<MyMesh::VertexPointer, 2>, EdgeInfo>(vertPair, edgeInfo));
                 }
             }
         }
         printf("total edges: %lu\n", allEdges.size());
-        for(auto edge : allEdges){
-            EdgeInfo info = edge.first;
-            int count =edge.second;
-            if(count > 1 && info.length >= zero_TH && !info.faces[0]->IsD() && !info.faces[1]->IsD()){
-                if(info.angles[0] >= angle_threshold && info.angles[1] >= angle_threshold) { // ill-formed triangle
-                    MyMesh::VertexPointer side_vert = info.angles[0] > info.angles[1] ? info.oppositeVert[0] : info.oppositeVert[1];
-                    MyMesh::CoordType projector = (info.edge_verts[0]->cP() - info.edge_verts[1]->cP()).Normalize();
-                    MyMesh::CoordType projectee = side_vert->cP() - info.edge_verts[0]->cP();
+
+        for(auto pair : allEdges){
+            array<MyMesh::VertexPointer,2> vertPair = pair.first;
+            EdgeInfo *info = &pair.second;
+            if(info->count < 2) continue;
+            double length = Distance(vertPair[0]->cP(), vertPair[1]->cP());
+//            printf("length: %f\n", length);
+            if(info->count > 1 && length >= zero_TH && !info->getFace(0)->IsD() && !info->getFace(1)->IsD()){
+//            if(count > 1 && info.length >= zero_TH){
+                double angle0, angle1;
+                int idx[2], i = 0; //per determinare le 2 faccie non sovrapposte
+                for(int j = 0; j < info->mask.size(); j++){
+                    if(info->getMask(j)) idx[i++] = j;
+                }
+                angle0 = Angle(vertPair[0]->cP() - info->getOppositeVert(idx[0])->cP(), vertPair[1]->cP() - info->getOppositeVert(idx[0])->cP());
+                angle1 = Angle(vertPair[0]->cP() - info->getOppositeVert(idx[1])->cP(), vertPair[1]->cP() - info->getOppositeVert(idx[1])->cP());
+                if(angle0 >= angle_threshold && angle1 >= angle_threshold) { // ill-formed triangle
+                    flag = !flag;
+                    MyMesh::VertexPointer side_vert = angle0 > angle1 ? info->getOppositeVert(idx[0]) : info->getOppositeVert(idx[1]);
+                    MyMesh::CoordType projector = (vertPair[0]->cP() - vertPair[1]->cP()).Normalize();
+                    MyMesh::CoordType projectee = side_vert->cP() - vertPair[0]->cP();
                     double t = projector.dot(projectee);    //a coefficient for the new vertex coordinates
-                    newCoords.emplace_back(tuple<MyMesh::CoordType, double>(info.edge_verts[0]->cP() + projector * t, t));
-                    tri::Allocator<MyMesh>::DeleteFace(*m, *info.faces[0]);
-                    tri::Allocator<MyMesh>::DeleteFace(*m, *info.faces[1]);
+                    MyMesh::CoordType mat0 = vert_mat[vertPair[0]];
+                    MyMesh::CoordType mat1 = vert_mat[vertPair[1]];
+                    MyMesh::CoordType mat_projector = (mat1 - mat0).normalized();
+                    //first is the coordinate of the vertex, the second is the MAT coordinate associated with
+                    newCoords.emplace_back(tuple<MyMesh::CoordType, MyMesh::CoordType>(vertPair[0]->cP() + projector * t, mat0 + mat_projector * t));
+                    for(auto f = info->faces.begin(); f != info->faces.end(); f++){
+                        tri::Allocator<MyMesh>::DeleteFace(*m, **f);
+                    }
 #if COLLAPESER_DEBUG
                     printf("-------\n");
                     PRINTP(info.edge_verts[0]->cP())
@@ -325,7 +354,13 @@ public:
                     assert(info.edge_verts[1] != info.oppositeVert[0] && info.edge_verts[1] != info.oppositeVert[1]);
                     assert(info.oppositeVert[0] != info.oppositeVert[1]);
 #endif
-                    splittingFaceVerts.emplace_back(quadVert(info.edge_verts[0], info.edge_verts[1], info.oppositeVert[0], info.oppositeVert[1]));
+                    for(int j = 0; j < info->faces.size(); j++){
+                        //todo
+                        // questo inserimento non va bene, non so l'ordine dei vertici (crea zone vuote senza faccia)
+                        int V0idx = info->getV0Idx(j);
+                        splittingFaceVerts.emplace_back(triVert(info->getFace(j)->V0(V0idx),info->getFace(j)->V1(V0idx),info->getFace(j)->V2(V0idx)));
+                        mask.emplace_back(flag);
+                    }
                 }
             }
         }
@@ -335,41 +370,77 @@ public:
         tri::Allocator<MyMesh>::PointerUpdater<MyMesh::VertexPointer> vpu;
         MyMesh::VertexIterator vi = tri::Allocator<MyMesh>::AddVertices(*m, newCoords.size(), vpu);
 
-        assert(splittingFaceVerts.size() == newCoords.size());
-
+        assert(mask.size() == splittingFaceVerts.size());
+        int sptfaceCount = 1;
+        int coordCount = 1;
+//        bool previous_flag = *mask.begin();
+        auto current_flag = mask.begin();
         auto splittingFaceIt = splittingFaceVerts.begin();
         auto coordsIt = newCoords.begin();
+        MyMesh::CoordType coord = get<0>(*newCoords.begin());
+        MyMesh::CoordType new_mat = get<1>(*newCoords.begin());
+        vi->P() = coord;
+//        printf("splitting face verts: %lu\n", splittingFaceVerts.size());
+//        printf("new coords: %lu\n", newCoords.size());
+//        printf("mask: %lu\n", mask.size());
+//        printf("---\n");
+//        for(auto m : mask){
+//            printf(m ? "1 ":"0 ");
+//        }
+//        printf("---\n");
+
+        int faceCount= 0;
         while(vi != m->vert.end()){
-            MyMesh::CoordType coord = get<0>(*coordsIt);
-            double t = get<1>(*coordsIt);
-            vi->P() = coord;
             MyMesh::VertexPointer v0 = get<0>(*splittingFaceIt);
             MyMesh::VertexPointer v1 = get<1>(*splittingFaceIt);
             MyMesh::VertexPointer v2 = get<2>(*splittingFaceIt);
-            MyMesh::VertexPointer v3 = get<3>(*splittingFaceIt);
+
             if(vpu.NeedUpdate()){
                 vpu.Update(v0);
                 vpu.Update(v1);
                 vpu.Update(v2);
-                vpu.Update(v3);
             }
-            newFaces.emplace_back(triVert(v0, vi.base(), v2));
+//            assert(tri::Index(*m, v0) < m->vert.size() && tri::Index(*m, v0) >= 0);
+//            assert(tri::Index(*m, v1) < m->vert.size() && tri::Index(*m, v1) >= 0);
+//            assert(tri::Index(*m, v2) < m->vert.size() && tri::Index(*m, v2) >= 0);
+//            assert(tri::Index(*m, vi.base()) < m->vert.size() && tri::Index(*m, vi.base()) >= 0);
+//            printf("%p\t%p\t%p\n", v0, v1, vi.base());
+            newFaces.emplace_back(triVert(vi.base(), v2, v0));
+//            printf("%p\t%p\t%p\n", vi.base(), v1, v2);
             newFaces.emplace_back(triVert(vi.base(), v1, v2));
-            newFaces.emplace_back(triVert(v0, v3, vi.base()));
-            newFaces.emplace_back(triVert(vi.base(), v3, v1));
+//            printf("faceCount: %d\n", ++faceCount);
+//
+//            printf("current flag: ");
+//            printf(*current_flag ? "1\t":"0\t");
+//            printf("next flag: ");
+//            printf(*next(current_flag) ? "1\n":"0\n");
 
-            MyMesh::CoordType mat0 = vert_mat[v0];
-            MyMesh::CoordType mat1 = vert_mat[v1];
-            MyMesh::CoordType mat_projector = (mat1 - mat0).normalized();
-            vert_mat[vi] = mat0 + mat_projector * t;
-            isSplitted[vi] = true;
-
-            vi++;
+            if(next(current_flag) == mask.end() || *next(current_flag) != *current_flag){
+                faceCount = 0;
+//                printf("advancing coordIt %d, splFaces:%d\n", coordCount++, sptfaceCount);
+//                printf("coord count: %d\n",coordCount++);
+                vert_mat[vi] = new_mat;
+                isSplitted[vi] = true;
+                coord = get<0>(*coordsIt);
+                new_mat = get<1>(*coordsIt);
+                vi->P() = coord;
+                coordsIt++;
+                vi++;
+            }
+//            previous_flag = *current_flag;
             splittingFaceIt++;
-            coordsIt++;
+            current_flag++;
+            sptfaceCount++;
+//            printf("split Face count: %d\n",sptfaceCount++);
+
         }
+
+        cout << "new faces size: "<<newFaces.size()<<endl;
+        cout << "coordinates size: "<<newCoords.size()<<endl;
+
         MyMesh::FaceIterator  fi = tri::Allocator<MyMesh>::AddFaces(*m, newFaces.size());
         for(auto nfi = newFaces.begin(); nfi != newFaces.end() && fi!=m->face.end(); nfi++, fi++){
+            printf("%p\t%p\t%p\n",get<0>(*nfi), get<1>(*nfi),get<2>(*nfi));
             fi->V(0) = get<0>(*nfi);
             fi->V(1) = get<1>(*nfi);
             fi->V(2) = get<2>(*nfi);
@@ -513,7 +584,7 @@ public:
             for(auto adjV = adjacentVertices.begin(); adjV != adjacentVertices.end(); adjV++){
                 double edge_length = Distance(vi->P(), adjV.operator*()->P());
                 VertexPair vpair(vi.base(), (*adjV.base()));
-                if(edge_length <= length && collapser.LinkConditions(vpair)){ //here should be another constraints which check if is collapsable, but not done
+                if(edge_length <= length && collapser.LinkConditions(vpair)){
                     counter++;
                 }
             }
