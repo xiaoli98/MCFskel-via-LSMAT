@@ -54,7 +54,8 @@ public:
             for(auto adjv = adjacentVertices.begin(); adjv != adjacentVertices.end(); adjv++){
 //                i = tri::Index(*m, vit.base());
 //                j = tri::Index(*m, *(adjv.base()));
-                w = TD[vit.base()].cnt * 0.5;
+//                assert(TD[vit.base()].cnt >= 0);
+                w = TD[vit.base()].cnt < 0 ? 0 : TD[vit.base()].cnt*0.5;
                 sum_w += w;
                 laplacian.emplace_back(make_tuple(vit.base(), *(adjv.base()), w));
             }

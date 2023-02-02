@@ -68,16 +68,18 @@ public:
         Collapser collapser(m);
 
         int counter = 0;
-        while(counter < 5) {
+        while(counter < 15) {
             cout << "-------------------------------------------------"<<counter<<"-------------------------------------------------"<<endl;
+//            printf("bbox_diag: %f\n", m->bbox.Diag());
 //            tri::UpdateTopology<MyMesh>::VertexFace(*m);
 //            tri::UpdateTopology<MyMesh>::FaceFace(*m);
 //            tri::Allocator<MyMesh>::CompactEveryVector(*m);
             laplaceHelper.compute_laplace();
 //            laplaceHelper.print_lapacian();
             collapser.compute();
-            cout << "meso skel created"<<endl;
+
             cout << "FN: "<< m->FN() << " VN: "<<m->VN()<<endl;
+            cout << "meso skel created"<< ": skel_"+to_string(counter)+".off" <<endl;
             tri::io::ExporterOFF<MyMesh>::Save(*m, ("skel_"+to_string(counter++)+".off").c_str(), tri::io::Mask::IOM_FACECOLOR);
         }
     }
