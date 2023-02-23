@@ -44,11 +44,11 @@ public:
     Collapser(MyMesh* m){
         this->m = m;
         omega_L = tri::Allocator<MyMesh>::GetPerVertexAttribute<double>(*m, string("omega_L"));
-        omega_L_0 = 1;
+        omega_L_0 = 1.0f;
         omega_H = tri::Allocator<MyMesh>::GetPerVertexAttribute<double>(*m, string("omega_H"));
-        omega_H_0 = 20;
+        omega_H_0 = 20.0f;
         omega_M = tri::Allocator<MyMesh>::GetPerVertexAttribute<double>(*m, string("omega_M"));
-        omega_M_0 = 40;
+        omega_M_0 = 40.0f;
         for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
             omega_L[vi] = omega_L_0;
             omega_H[vi] = omega_H_0;
@@ -62,7 +62,7 @@ public:
             isFixed[vi] = false;
         isSplitted = tri::Allocator<MyMesh>::GetPerVertexAttribute<bool>(*m, string("isSplitted"));
         edge_threshold = tri::Allocator<MyMesh>::GetPerMeshAttribute<double>(*m, string("edge_threshold"));
-        edge_threshold() = 0.002*m->bbox.Diag();
+        edge_threshold() = 0.02*m->bbox.Diag();
     }
 
     void compute(){
@@ -70,16 +70,19 @@ public:
         createRHS();
         solveLS();
         MyMesh::PerVertexAttributeHandle<MyMesh::CoordType> sol = tri::Allocator<MyMesh>::GetPerVertexAttribute<MyMesh::CoordType>(*m, string("solution"));
-
+        double alpha = 1;
         for (auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
             if(vi->IsD()) continue;
-            vi->P() = sol[vi];
+//            vi->P() = sol[vi];
+                vi->P() = (1-alpha) * vi->P() + alpha * sol[vi];
         }
+
 //        update_omega();
         update_topology();
         detect_degeneracies();
         tri::io::ExporterOFF<MyMesh>::Save(*m, "prova.off", tri::io::Mask::IOM_FACECOLOR);
     }
+
     void createLHS(){
         laplacian = tri::Allocator<MyMesh>::GetPerMeshAttribute<laplacian_triple>(*m, string("laplacian"));
         nrows = 3 * m->VN();
@@ -94,15 +97,30 @@ public:
 
         MyMesh::VertexPointer v0,v1;
         double w;
+        int count = 0;
+        printf("Laplacian size: %lu\n", laplacian().size());
         for (auto l = laplacian().begin(); l != laplacian().end(); l++){
             w = get<2>(*l);
             v0 = get<0>(*l);
             v1 = get<1>(*l);
-            if(v0 != v1)
+//            printf("%zu \t %zu \t %f\n", tri::Index(*m, v0), tri::Index(*m, v1), w);
+            if(v0 != v1){
+//                printf("omega_L[v0]: %f\n", omega_L[v0]);
+                if(w == 0){
+                    count++;
+                }
                 triplets.emplace_back(Eigen::Triplet<double>(tri::Index(*m, v0), tri::Index(*m, v1), w * omega_L[v0]));
+            }
             else
                 triplets.emplace_back(Eigen::Triplet<double>(tri::Index(*m, v0), tri::Index(*m, v0), w));
         }
+        printf("count: %d\n", count);
+
+//        Eigen::SparseMatrix<double> temp;
+//        temp.resize(m->VN(), m->VN());
+//        temp.setFromTriplets(triplets.begin(), triplets.end());
+//        Eigen::FullPivLU<Eigen::MatrixXd> lu_decomp(temp);
+//        printf("laplacian RANK %td\n", lu_decomp.rank());
 
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
             if(vi->IsD()) continue;
@@ -128,20 +146,24 @@ public:
     void createRHS(){
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
             if(vi->IsD()) continue;
-            MyMesh::CoordType c = (float)omega_H[vi] * vi->P();
+            MyMesh::CoordType c = (double)omega_H[vi] * vi->P();
             RHS.row(ncols + tri::Index(*m, *vi)) = Eigen::Vector3d(c.X(), c.Y(), c.Z());
         }
 
         for(auto vi = m->vert.begin(); vi != m->vert.end(); vi++){
             if(vi->IsD()) continue;
-            MyMesh::CoordType c = (float) omega_M[vi] * vert_mat[vi];
+            MyMesh::CoordType c = (double) omega_M[vi] * vert_mat[vi];
             RHS.row(2*ncols + tri::Index(*m, *vi)) = Eigen::Vector3d(c.X(), c.Y(), c.Z());
         }
     }
 
     void solveLS(){
         Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>> solver;
-        solver.compute(LHS.transpose() * LHS);
+        auto A = LHS.transpose() * LHS;
+//        Eigen::FullPivLU<Eigen::MatrixXd> lu_decomp(LHS);
+//        printf("RANK: %td\n", lu_decomp.rank());
+
+        solver.compute(A);
 
         X.col(0) = solver.solve(LHS.transpose() * RHS.col(0));
         X.col(1) = solver.solve(LHS.transpose() * RHS.col(1));
@@ -191,45 +213,94 @@ public:
         }
     }
 
+#define REFINE 0
     typedef tuple<MyMesh::VertexType*,MyMesh::VertexType*,MyMesh::VertexType*> triVert;
     void update_topology(){
 //        edge_split();
 //        tri::io::ExporterOFF<MyMesh>::Save(*m, "after split_1.off", tri::io::Mask::IOM_FACECOLOR);
         int total_collapse = 0;
         int n_collapse = 0;
-        do{
-            n_collapse = edge_collapse();
-            total_collapse += n_collapse;
-        }while(n_collapse > 0);
-//        tri::io::ExporterOFF<MyMesh>::Save(*m, "after collapse.off", tri::io::Mask::IOM_FACECOLOR);
         int total_split = 0;
         int n_split = 0;
+
+#if REFINE
+        do{
+            n_collapse = edge_collapse();
+            n_split = edge_split();
+            total_collapse += n_collapse;
+            total_split += n_split;
+
+            if (n_collapse <2 && n_split < 2){
+                printf("collased: %d\n", n_collapse);
+                printf("splitted: %d\n", n_split);
+                break;
+            }
+        }while(n_collapse > 0 || n_split > 0);
+#else
         do{
             n_split = edge_split();
             total_split += n_split;
-        }while(n_split > 0);
-//        tri::io::ExporterOFF<MyMesh>::Save(*m, "after split_2.off", tri::io::Mask::IOM_FACECOLOR);
-//        edge_split();
-//        tri::io::ExporterOFF<MyMesh>::Save(*m, "after split_3.off", tri::io::Mask::IOM_FACECOLOR);
+        }while(n_split > 1);
 
-//        cout << "topology updated, face and vertex cleaned"<<endl;
+        do{
+            n_collapse = edge_collapse();
+            total_collapse += n_collapse;
+        }while(n_collapse > 1);
+        printf("collased: %d\n", total_collapse);
+        printf("splitted: %d\n", total_split);
+#endif
     }
 
+
+    struct EdgeComp{
+        bool operator()(array<MyMesh::VertexPointer,2> e1, array<MyMesh::VertexPointer,2> e2){
+            if(e1[0] != e2[0]) return e1[0] < e2[0];
+            else return e1[1] < e2[1];
+        }
+    };
+
+    typedef map<array<MyMesh::VertexPointer,2>, double, EdgeComp> edgeWeight;
     int edge_collapse(){
         printf("edge_collapse: ");
         int count=0;
-//        printf("edge_threshold: %f\n", edge_threshold());
+        printf("edge_threshold: %f\n", edge_threshold());
         MyMesh::VertexType *V0, *V1;
         double edge_length;
         tri::UpdateFlags<MyMesh>::VertexClearV(*m);
 
+        {
+            //--------------------------------------------------------------//
+            edgeWeight allEdges;
+            for (auto fit = m->face.begin(); fit != m->face.end(); fit++) {
+                for (int i = 0; i < fit->VN(); i++) {
+                    array<MyMesh::VertexPointer, 2> vertPair = {fit->V0(i), fit->V1(i)}; //aka edge
+                    if (vertPair[0] > vertPair[1]) swap(vertPair[0], vertPair[1]);
+                    allEdges[vertPair] = Distance(vertPair[0]->cP(), vertPair[1]->cP());
+                }
+            }
+            int shortedges = 0;
+            for (auto const &item: allEdges) {
+                if (item.second < edge_threshold()) {
+                    shortedges++;
+                }
+            }
+            printf("total short edge: %d\n", shortedges);
+            //--------------------------------------------------------------//
+        }
+
         vector<MyMesh::VertexPointer> adjVertices;
+        int count_jump_del = 0;
+        int count_jump_fix = 0;
+        int count_jump_link = 0;
         for(auto vit = m->vert.begin(); vit != m->vert.end(); vit++) {
             if(!vit->IsD()) {
                 face::VVStarVF<MyMesh::FaceType>(vit.base(), adjVertices);
                 for (auto adjv = adjVertices.begin(); adjv != adjVertices.end(); adjv++) {
-                    if ((*adjv)->IsD()) continue;
-                    if(isFixed[vit.base()] && isFixed[*adjv.base()]) continue;
+                    if ((*adjv)->IsD()) {
+                        count_jump_del++;
+                        continue;
+                    }
+                    if(isFixed[vit.base()] && isFixed[*adjv.base()]) { count_jump_fix++; continue; }
                     MyMesh::FacePointer fp = vit->VFp();
                     V0 = vit.base();
                     V1 = (*adjv);
@@ -253,23 +324,52 @@ public:
                             else
                                 vert_mat[V1] = vert_mat[V1];
 
-                            collapser.Do(*m, vpair, V1->P());
-                            count++;
-                            break;
+                            if(!V1->IsD() && !V0->IsD()){
+                                collapser.Do(*m, vpair, V1->P());
+                                count++;
+                            }
+//                            break;
                         }
+                    }
+                    else if(Distance(V0->P(), V1->P()) < edge_threshold()){
+                        count_jump_link++;
                     }
                 }
             }
         }
 
-
 //        tri::UpdateTopology<MyMesh>::FaceFace(*m);
+        printf("jump del: %d\n", count_jump_del);
+        printf("jump fix: %d\n", count_jump_fix);
+        printf("jump link: %d\n", count_jump_link);
         printf("collapsed %d times\n", count);
+
         tri::Allocator<MyMesh>::CompactFaceVector(*m);
         tri::Allocator<MyMesh>::CompactVertexVector(*m);
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
-        printf("\t FN: %d\n", m->FN());
-        printf("\t VN: %d\n", m->VN());
+        tri::UpdateFlags<MyMesh>::FaceBorderFromVF(*m);
+
+
+        {
+            //--------------------------------------------------------------//
+            printf("\t---after---\n");
+            edgeWeight allEdges;
+            for (auto fit = m->face.begin(); fit != m->face.end(); fit++) {
+                for (int i = 0; i < fit->VN(); i++) {
+                    array<MyMesh::VertexPointer, 2> vertPair = {fit->V0(i), fit->V1(i)}; //aka edge
+                    if (vertPair[0] > vertPair[1]) swap(vertPair[0], vertPair[1]);
+                    allEdges[vertPair] = Distance(vertPair[0]->cP(), vertPair[1]->cP());
+                }
+            }
+            int shortedges = 0;
+            for (auto const &item: allEdges) {
+                if (item.second < edge_threshold()) {
+                    shortedges++;
+                }
+            }
+            printf("\ttotal short edge: %d\n", shortedges);
+            //--------------------------------------------------------------//
+        }
         return count;
     }
 
@@ -310,12 +410,6 @@ public:
         }
     };
 
-    struct EdgeComp{
-        bool operator()(array<MyMesh::VertexPointer,2> e1, array<MyMesh::VertexPointer,2> e2){
-            if(e1[0] != e2[0]) return e1[0] < e2[0];
-            else return e1[1] < e2[1];
-        }
-    };
 
     int edge_split(){
         printf("edge split: ");
@@ -323,7 +417,7 @@ public:
         vector<tuple<MyMesh::CoordType, MyMesh::CoordType>> newCoords;
         vector<bool> mask; //a mask for identify if the face uses the same splitting with the previous face
         bool flag = false;
-        double angle_threshold = 110*(3.14/180); //110° in radiant
+        double angle_threshold = math::ToRad(110.0); //110° in radiant
         map<array<MyMesh::VertexPointer,2>, EdgeInfo, EdgeComp> allEdges;
         for(auto fit = m->face.begin(); fit != m->face.end(); fit++){
             for(int i = 0; i < fit->VN(); i++){
@@ -373,6 +467,9 @@ public:
                 angle0 = Angle(vertPair[0]->cP() - info->getOppositeVert(idx[0])->cP(), vertPair[1]->cP() - info->getOppositeVert(idx[0])->cP());
                 angle1 = Angle(vertPair[0]->cP() - info->getOppositeVert(idx[1])->cP(), vertPair[1]->cP() - info->getOppositeVert(idx[1])->cP());
 //                printf("angle0: %f\tangle1:%f\t threshold:%f\n", angle0, angle1, angle_threshold);
+                //qua ci sta && per 2 motivi:
+                //1 - l'algoritmo e' piu veloce
+                //2 - crea problemi prima per il laplaciano
                 if(angle0 >= angle_threshold && angle1 >= angle_threshold) { // ill-formed triangle
                     flag = !flag;
                     MyMesh::VertexPointer side_vert = angle0 > angle1 ? info->getOppositeVert(idx[0]) : info->getOppositeVert(idx[1]);
@@ -484,6 +581,7 @@ public:
         }
         printf("splitted %lu edges\n", newCoords.size());
         tri::UpdateTopology<MyMesh>::VertexFace(*m);
+        tri::UpdateFlags<MyMesh>::FaceBorderFromVF(*m);
 //        printf("vert %lu, %lu\n", m->vert.size(), m->VN());
 //        printf("face %lu, %lu\n", m->face.size(), m->FN());
         tri::Allocator<MyMesh>::CompactFaceVector(*m);
@@ -505,7 +603,7 @@ public:
             for(auto adjV = adjacentVertices.begin(); adjV != adjacentVertices.end(); adjV++){
                 double edge_length = Distance(vi->P(), adjV.operator*()->P());
                 VertexPair vpair(vi.base(), (*adjV.base()));
-                if(edge_length <= length && collapser.LinkConditions(vpair)){
+                if(edge_length <= length && !collapser.LinkConditions(vpair)){
 //                if(edge_length <= length){
                     counter++;
                 }

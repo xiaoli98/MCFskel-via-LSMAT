@@ -21,5 +21,5 @@ add_dependencies(libqhullcpp qhull)
 LINK_DIRECTORIES(/home/boy/3D/qhull/build)
 set(CMAKE_CXX_STANDARD 14)
 
-add_executable(MCFsket main.cpp LSMAT.hpp sphereShrinking.hpp utils.hpp meanCurvatureFlow.hpp LaplaceHelper.hpp Collapser.h)
+add_executable(MCFsket main.cpp LSMAT.hpp sphereShrinking.hpp utils.hpp meanCurvatureFlow.hpp LaplaceHelper.hpp Collapser.h Voronoi.hpp)
 target_link_libraries(${PROJECT_NAME} libqhullstatic_r libqhullcpp)

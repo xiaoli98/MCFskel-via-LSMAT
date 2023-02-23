@@ -26,9 +26,9 @@ private:
 
     vector<Sphere3d> medial_spheres;
 
-    KdTree<float> kdtree;
+    KdTree<double> kdtree;
 
-    float threshold = 0.00001;
+    double threshold = 0.00001;
 
     MyMesh *m;
 public:
@@ -41,7 +41,7 @@ public:
     }
 
 public:
-    SphereShrinking(MyMesh *m, KdTree<float> kdtree) : kdtree(kdtree) {
+    SphereShrinking(MyMesh *m, KdTree<double> kdtree) : kdtree(kdtree) {
         this->m = m;
         tri::UpdateBounding<MyMesh>::Box(*m);
         tri::RequirePerVertexNormal(*m);
@@ -91,8 +91,8 @@ public:
     /// \return the nearest point to c
     Point3d nearestNeighbor_kdtree(Point3d c, Point3d p){
         unsigned int idx;
-        float dist;
-        KdTree<float>::PriorityQueue queue;
+        double dist;
+        KdTree<double>::PriorityQueue queue;
         this->kdtree.doQueryK(c, 2, queue);
         for(int i = 0; i < queue.getNofElements(); i++){
             int idx = queue.getIndex(i);
